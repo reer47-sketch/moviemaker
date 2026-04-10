@@ -4,12 +4,16 @@ import { createServiceClient } from "@/lib/supabase";
 import os from "os";
 import path from "path";
 import fs from "fs/promises";
+import { exec } from "child_process";
+import { promisify } from "util";
 
+const execAsync = promisify(exec);
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+export const maxDuration = 300;
 
 type SubtitleEntry = { start: number; end: number; text: string };
 
-/** Whisper timestamps + original script text → subtitle entries */
 function mapScriptToSegments(
   script: string,
   whisperSegs: { start: number; end: number }[]
@@ -37,15 +41,11 @@ function mapScriptToSegments(
     const chunk = words.slice(wordIdx, wordIdx + wordsForSeg).join(" ");
     wordIdx += wordsForSeg;
 
-    if (chunk) {
-      result.push({ start: seg.start, end: seg.end, text: chunk });
-    }
+    if (chunk) result.push({ start: seg.start, end: seg.end, text: chunk });
   }
 
-  // If any words remain (rounding error), append to last entry
   if (wordIdx < words.length && result.length > 0) {
-    result[result.length - 1].text +=
-      " " + words.slice(wordIdx).join(" ");
+    result[result.length - 1].text += " " + words.slice(wordIdx).join(" ");
   }
 
   return result;
@@ -63,12 +63,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Download audio for Whisper (timing only)
     const audioRes = await fetch(audioUrl);
     const audioBuffer = await audioRes.arrayBuffer();
-    const audioFile = new File([audioBuffer], "audio.mp3", {
-      type: "audio/mpeg",
-    });
+    const audioFile = new File([audioBuffer], "audio.mp3", { type: "audio/mpeg" });
 
     const transcription = await openai.audio.transcriptions.create({
       file: audioFile,
@@ -83,7 +80,13 @@ export async function POST(req: NextRequest) {
       end: s.end,
     }));
 
-    // Use original script text mapped onto Whisper timings
+    if (!whisperSegs.length) {
+      return NextResponse.json(
+        { error: "음성 타이밍을 분석할 수 없습니다. 오디오를 확인해주세요." },
+        { status: 422 }
+      );
+    }
+
     const subtitles: SubtitleEntry[] = script
       ? mapScriptToSegments(script, whisperSegs)
       : whisperSegs.map((s, i) => ({
@@ -101,10 +104,23 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error("Subtitle generation error:", error);
     return NextResponse.json(
-      { error: "자막 생성 중 오류가 발생했습니다" },
+      { error: "자막 생성 중 오류가 발생했습니다", detail: String(error) },
       { status: 500 }
     );
   }
+}
+
+/**
+ * Escape text for FFmpeg drawtext `text=` option value inside single quotes.
+ * Korean characters don't need escaping — only: \ : { } and ' are special.
+ */
+function escapeDrawtext(t: string): string {
+  return t
+    .replace(/\\/g, "\\\\")  // backslash first
+    .replace(/'/g, "\\'")    // single quote (FFmpeg filter level)
+    .replace(/:/g, "\\:")    // colon (FFmpeg option separator)
+    .replace(/\{/g, "\\{")   // brace (drawtext expansion)
+    .replace(/\}/g, "\\}");
 }
 
 async function burnSubtitles(
@@ -113,66 +129,71 @@ async function burnSubtitles(
   options: { style: string; fontSize: number; fontName: string }
 ): Promise<string> {
   const ffmpegInstaller = await import("@ffmpeg-installer/ffmpeg");
-  const ffprobeInstaller = await import("@ffprobe-installer/ffprobe");
-  const ffmpeg = (await import("fluent-ffmpeg")).default;
-  ffmpeg.setFfmpegPath(ffmpegInstaller.path);
-  ffmpeg.setFfprobePath(ffprobeInstaller.path);
+  const FFMPEG = `"${ffmpegInstaller.path}"`;
 
   const tmpDir = os.tmpdir();
   const ts = Date.now();
-  const tempVideo = path.join(tmpDir, `input-${ts}.mp4`);
-  const srtFile = path.join(tmpDir, `subs-${ts}.srt`);
-  const outputVideo = path.join(tmpDir, `subtitled-${ts}.mp4`);
+  // Use forward-slash paths to avoid Windows backslash issues in FFmpeg args
+  const tempVideo = path.join(tmpDir, `input-${ts}.mp4`).replace(/\\/g, "/");
+  const outputVideo = path.join(tmpDir, `subtitled-${ts}.mp4`).replace(/\\/g, "/");
 
   try {
     // Download video
     const videoRes = await fetch(videoUrl);
+    if (!videoRes.ok) throw new Error(`비디오 다운로드 실패: ${videoRes.status}`);
     await fs.writeFile(tempVideo, Buffer.from(await videoRes.arrayBuffer()));
 
-    // Generate SRT
-    const formatTime = (s: number) => {
-      const h = Math.floor(s / 3600);
-      const m = Math.floor((s % 3600) / 60);
-      const sec = Math.floor(s % 60);
-      const ms = Math.round((s % 1) * 1000);
-      return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")},${String(ms).padStart(3, "0")}`;
-    };
+    const { style, fontSize } = options;
 
-    const srtContent = subtitles
-      .map(
-        (sub, i) =>
-          `${i + 1}\n${formatTime(sub.start)} --> ${formatTime(sub.end)}\n${sub.text}`
-      )
-      .join("\n\n");
+    // Resolve Korean font (bundled in public/fonts/)
+    const fontAbsPath = path.join(process.cwd(), "public", "fonts", "NanumGothic.ttf");
+    let fontFilePart = "";
+    try {
+      await fs.access(fontAbsPath);
+      // forward-slash path; no colon escaping needed inside single-quoted filter values
+      fontFilePart = `:fontfile='${fontAbsPath.replace(/\\/g, "/")}'`;
+      console.log("[subtitles] Using font:", fontAbsPath);
+    } catch {
+      console.warn("[subtitles] Font not found, using system default:", fontAbsPath);
+    }
 
-    await fs.writeFile(srtFile, srtContent, "utf-8");
+    const fontcolor = style === "yellow" ? "yellow" : "white";
 
-    // Build force_style
-    const { style, fontSize, fontName } = options;
-    const fontColor = style === "yellow" ? "&H0000FFFF" : "&H00FFFFFF";
-    const backColor =
-      style === "outline" ? "&H00000000" : "&H80000000";
-    const borderStyle = style === "outline" ? "3" : "4";
-    const outline = style === "outline" ? "3" : "1";
+    // Build one drawtext filter per subtitle.
+    // Using text= directly (not textfile=) avoids temp-file path issues on Windows.
+    const filters = subtitles.map((sub) => {
+      const safeText = escapeDrawtext(sub.text);
+      const ts0 = sub.start.toFixed(3);
+      const ts1 = sub.end.toFixed(3);
 
-    const fontPart = fontName ? `FontName=${fontName},` : "";
-    const forceStyle = `${fontPart}FontSize=${fontSize},PrimaryColour=${fontColor},BackColour=${backColor},BorderStyle=${borderStyle},Outline=${outline},Alignment=2`;
+      let f =
+        `drawtext=text='${safeText}'` +
+        `:enable='between(t,${ts0},${ts1})'` +
+        fontFilePart +
+        `:fontsize=${fontSize}` +
+        `:fontcolor=${fontcolor}` +
+        `:x=(w-tw)/2` +
+        `:y=h-th-50`;
 
-    const srtPathEscaped = srtFile
-      .replace(/\\/g, "/")
-      .replace(/:/g, "\\:");
-
-    await new Promise<void>((resolve, reject) => {
-      ffmpeg(tempVideo)
-        .videoFilters(
-          `subtitles='${srtPathEscaped}':force_style='${forceStyle}'`
-        )
-        .audioCodec("copy")
-        .output(outputVideo)
-        .on("end", () => resolve())
-        .on("error", (err) => reject(err))
-        .run();
+      if (style === "outline") {
+        f += `:shadowcolor=black@0.8:shadowx=2:shadowy=2`;
+      } else {
+        f += `:box=1:boxcolor=black@0.5:boxborderw=8`;
+      }
+      return f;
     });
+
+    const vf = filters.join(",");
+    const cmd =
+      `${FFMPEG} -i "${tempVideo}" -vf "${vf}" ` +
+      `-c:v libx264 -c:a copy -pix_fmt yuv420p -movflags +faststart "${outputVideo}" -y`;
+
+    console.log("[subtitles] FFmpeg: subtitle count =", subtitles.length);
+    const { stderr } = await execAsync(cmd, {
+      timeout: 180000,
+      maxBuffer: 50 * 1024 * 1024,
+    });
+    if (stderr) console.log("[subtitles] FFmpeg stderr (tail):", stderr.slice(-800));
 
     // Upload to Supabase
     const supabase = createServiceClient();
@@ -182,18 +203,13 @@ async function burnSubtitles(
     const { error } = await supabase.storage
       .from("media")
       .upload(fileName, outputBuffer, { contentType: "video/mp4" });
-
     if (error) throw error;
 
     const { data } = supabase.storage.from("media").getPublicUrl(fileName);
     return data.publicUrl;
-  } catch (e) {
-    console.error("FFmpeg subtitle error:", e);
-    return videoUrl;
   } finally {
     await Promise.all([
       fs.unlink(tempVideo).catch(() => {}),
-      fs.unlink(srtFile).catch(() => {}),
       fs.unlink(outputVideo).catch(() => {}),
     ]);
   }
