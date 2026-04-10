@@ -123,7 +123,7 @@ export function StepSubtitles({ project, updateProject, onNext, onPrev }: Props)
             max={44}
             step={2}
             value={[fontSize]}
-            onValueChange={([v]) => setFontSize(v)}
+            onValueChange={(v) => setFontSize(Array.isArray(v) ? v[0] : v)}
             className="w-full"
           />
           <div className="flex justify-between text-xs text-muted-foreground">
