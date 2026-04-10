@@ -67,8 +67,26 @@ export default function DashboardPage() {
     setVideos((prev) => prev.filter((v) => v.id !== id));
   };
 
-  const downloadHref = (url: string, topic: string) =>
-    `/api/proxy?url=${encodeURIComponent(url)}&download=1&filename=${encodeURIComponent(topic + ".mp4")}`;
+  const handleDownload = async (url: string, topic: string) => {
+    try {
+      const filename = topic + ".mp4";
+      const res = await fetch("/api/download-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, filename }),
+      });
+      const data = await res.json();
+      const signedUrl = data.signedUrl ?? url;
+      const a = document.createElement("a");
+      a.href = signedUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch {
+      window.open(url, "_blank");
+    }
+  };
 
   const completedCount = videos.filter((v) => v.status === "completed").length;
 
@@ -192,12 +210,13 @@ export default function DashboardPage() {
                               재생
                             </Button>
                           </a>
-                          <a href={downloadHref(finalUrl, video.topic)} download>
-                            <Button variant="ghost" size="sm" className="gap-2">
-                              <Download className="w-4 h-4" />
-                              다운로드
-                            </Button>
-                          </a>
+                          <Button
+                            variant="ghost" size="sm" className="gap-2"
+                            onClick={() => handleDownload(finalUrl, video.topic)}
+                          >
+                            <Download className="w-4 h-4" />
+                            다운로드
+                          </Button>
                         </>
                       )}
                       <Button

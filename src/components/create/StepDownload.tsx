@@ -1,15 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Download,
-  CheckCircle,
-  Share2,
-  LayoutDashboard,
-  Plus,
-  Film,
+  Download, CheckCircle, Share2, LayoutDashboard, Plus, Film, Loader2,
 } from "lucide-react";
 import type { VideoProject } from "@/app/create/page";
 
@@ -17,11 +13,39 @@ type Props = {
   project: Partial<VideoProject>;
 };
 
-const downloadHref = (url: string, topic: string) =>
-  `/api/proxy?url=${encodeURIComponent(url)}&download=1&filename=${encodeURIComponent((topic || "moviemaker") + ".mp4")}`;
+async function getSignedDownloadUrl(url: string, filename: string): Promise<string> {
+  const res = await fetch("/api/download-url", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url, filename }),
+  });
+  const data = await res.json();
+  return data.signedUrl ?? url;
+}
 
 export function StepDownload({ project }: Props) {
   const finalUrl = project.subtitledVideoUrl ?? project.videoUrl ?? "";
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = async () => {
+    if (!finalUrl) return;
+    setDownloading(true);
+    try {
+      const filename = (project.topic || "moviemaker") + ".mp4";
+      const signedUrl = await getSignedDownloadUrl(finalUrl, filename);
+      // Create a hidden <a> and click it — works on mobile too
+      const a = document.createElement("a");
+      a.href = signedUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch {
+      window.open(finalUrl, "_blank");
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
     <Card className="bg-card border-border/50">
@@ -64,9 +88,9 @@ export function StepDownload({ project }: Props) {
         {/* Stats */}
         <div className="grid grid-cols-3 gap-3 text-center">
           {[
-            { label: "장면 수", value: `${project.scenes?.length ?? 0}개` },
-            { label: "이미지", value: `${project.imageUrls?.length ?? 0}개` },
-            { label: "자막", value: "포함" },
+            { label: "장면 수",  value: `${project.scenes?.length ?? 0}개` },
+            { label: "이미지",   value: `${project.imageUrls?.length ?? 0}개` },
+            { label: "자막",     value: "포함" },
           ].map((stat) => (
             <div key={stat.label} className="p-3 rounded-xl bg-muted/50 border border-border/30">
               <div className="text-lg font-bold">{stat.value}</div>
@@ -77,28 +101,24 @@ export function StepDownload({ project }: Props) {
 
         {/* Actions */}
         <div className="space-y-3">
-          {finalUrl ? (
-            <a href={downloadHref(finalUrl, project.topic ?? "")} download>
-              <Button className="w-full gap-2 h-11">
-                <Download className="w-4 h-4" />
-                영상 다운로드
-              </Button>
-            </a>
-          ) : (
-            <Button className="w-full gap-2 h-11" disabled>
-              <Download className="w-4 h-4" />
-              영상 다운로드
-            </Button>
-          )}
+          <Button
+            onClick={handleDownload}
+            disabled={!finalUrl || downloading}
+            className="w-full gap-2 h-11"
+          >
+            {downloading ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> 다운로드 준비 중...</>
+            ) : (
+              <><Download className="w-4 h-4" /> 영상 다운로드</>
+            )}
+          </Button>
 
           <div className="grid grid-cols-2 gap-3">
             <Button
               variant="outline"
               className="gap-2"
               disabled={!finalUrl}
-              onClick={() => {
-                navigator.clipboard.writeText(finalUrl).catch(() => {});
-              }}
+              onClick={() => navigator.clipboard.writeText(finalUrl).catch(() => {})}
             >
               <Share2 className="w-4 h-4" />
               링크 복사
