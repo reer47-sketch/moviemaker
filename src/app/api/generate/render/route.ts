@@ -40,19 +40,32 @@ export async function POST(req: NextRequest) {
 
     const secondsPerScene = audioDuration / scenes.length;
 
-    // Download + auto-rotate images via sharp (fixes EXIF rotation on portrait photos)
+    // Download media files → all converted to JPEG frames for FFmpeg
     const sharp = (await import("sharp")).default;
     const imageFiles: string[] = [];
     for (let i = 0; i < imageUrls.length; i++) {
       const imgRes = await fetch(imageUrls[i]);
-      const imgBuf = Buffer.from(await imgRes.arrayBuffer());
+      const contentType = imgRes.headers.get("content-type") ?? "";
+      const buf = Buffer.from(await imgRes.arrayBuffer());
       const imgFile = path.join(tmpDir, `img-${ts}-${i}.jpg`);
 
-      // .rotate() with no args auto-rotates based on EXIF orientation
-      await sharp(imgBuf)
-        .rotate()
-        .jpeg({ quality: 90 })
-        .toFile(imgFile);
+      const isVideo =
+        contentType.startsWith("video/") ||
+        /\.(mp4|mov|avi|webm|mkv|m4v)$/i.test(imageUrls[i]);
+
+      if (isVideo) {
+        // Save video temporarily, then extract first frame with FFmpeg
+        const tempVid = path.join(tmpDir, `tmpvid-${ts}-${i}.mp4`);
+        await fs.writeFile(tempVid, buf);
+        await execAsync(
+          `${FFMPEG} -i "${tempVid}" -vframes 1 -q:v 2 "${imgFile}" -y`,
+          { timeout: 30000 }
+        );
+        await fs.unlink(tempVid).catch(() => {});
+      } else {
+        // Image: auto-rotate via EXIF, convert to JPEG
+        await sharp(buf).rotate().jpeg({ quality: 90 }).toFile(imgFile);
+      }
 
       imageFiles.push(imgFile);
     }
