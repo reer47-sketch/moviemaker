@@ -66,18 +66,8 @@ export default function DashboardPage() {
     setVideos((prev) => prev.filter((v) => v.id !== id));
   };
 
-  const handleDownload = async (url: string, topic: string) => {
-    try {
-      const res = await fetch(url);
-      const blob = await res.blob();
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `${topic}.mp4`;
-      a.click();
-    } catch {
-      window.open(url, "_blank");
-    }
-  };
+  const downloadHref = (url: string, topic: string) =>
+    `/api/proxy?url=${encodeURIComponent(url)}&download=1&filename=${encodeURIComponent(topic + ".mp4")}`;
 
   const completedCount = videos.filter((v) => v.status === "completed").length;
 
@@ -198,13 +188,12 @@ export default function DashboardPage() {
                               재생
                             </Button>
                           </a>
-                          <Button
-                            variant="ghost" size="sm" className="gap-2"
-                            onClick={() => handleDownload(finalUrl, video.topic)}
-                          >
-                            <Download className="w-4 h-4" />
-                            다운로드
-                          </Button>
+                          <a href={downloadHref(finalUrl, video.topic)} download>
+                            <Button variant="ghost" size="sm" className="gap-2">
+                              <Download className="w-4 h-4" />
+                              다운로드
+                            </Button>
+                          </a>
                         </>
                       )}
                       <Button

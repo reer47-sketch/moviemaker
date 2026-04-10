@@ -122,22 +122,20 @@ export function StepVoice({ project, updateProject, onNext, onPrev }: Props) {
               <button
                 key={voice.id}
                 onClick={() => setSelectedVoice(voice.id)}
-                className={`p-4 rounded-xl border text-left transition-all duration-200
+                className={`p-3 rounded-xl border text-left transition-all duration-200
                   ${selectedVoice === voice.id
                     ? "border-primary bg-primary/5"
                     : "border-border/50 bg-muted/30 hover:border-border"
                   }`}
               >
-                <div className="flex items-center gap-3">
-                  <div className={`w-9 h-9 rounded-full flex items-center justify-center ${selectedVoice === voice.id ? "bg-primary/20" : "bg-muted"}`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${selectedVoice === voice.id ? "bg-primary/20" : "bg-muted"}`}>
                     <Volume2 className={`w-4 h-4 ${selectedVoice === voice.id ? "text-primary" : "text-muted-foreground"}`} />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm">{voice.name}</div>
-                    <div className="text-xs text-muted-foreground truncate">{voice.desc}</div>
-                  </div>
-                  <Badge variant="outline" className="text-xs shrink-0">{voice.gender}</Badge>
+                  <div className="font-medium text-sm">{voice.name}</div>
+                  <Badge variant="outline" className="text-xs ml-auto shrink-0">{voice.gender}</Badge>
                 </div>
+                <div className="text-xs text-muted-foreground leading-relaxed">{voice.desc}</div>
               </button>
             ))}
           </div>

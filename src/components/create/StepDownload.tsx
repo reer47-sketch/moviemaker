@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import {
   Download,
   CheckCircle,
@@ -11,7 +10,6 @@ import {
   LayoutDashboard,
   Plus,
   Film,
-  ExternalLink,
 } from "lucide-react";
 import type { VideoProject } from "@/app/create/page";
 
@@ -19,28 +17,11 @@ type Props = {
   project: Partial<VideoProject>;
 };
 
+const downloadHref = (url: string, topic: string) =>
+  `/api/proxy?url=${encodeURIComponent(url)}&download=1&filename=${encodeURIComponent((topic || "moviemaker") + ".mp4")}`;
+
 export function StepDownload({ project }: Props) {
   const finalUrl = project.subtitledVideoUrl ?? project.videoUrl ?? "";
-
-  const handleDownload = async () => {
-    if (!finalUrl) return;
-    try {
-      // Fetch the video as a blob to force download
-      const res = await fetch(finalUrl);
-      const blob = await res.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = blobUrl;
-      a.download = `moviemaker-${Date.now()}.mp4`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
-    } catch {
-      // Fallback: open in new tab
-      window.open(finalUrl, "_blank");
-    }
-  };
 
   return (
     <Card className="bg-card border-border/50">
@@ -96,23 +77,18 @@ export function StepDownload({ project }: Props) {
 
         {/* Actions */}
         <div className="space-y-3">
-          <Button
-            onClick={handleDownload}
-            disabled={!finalUrl}
-            className="w-full gap-2 h-11"
-          >
-            <Download className="w-4 h-4" />
-            영상 다운로드
-          </Button>
-
-          {/* Direct link fallback */}
-          {finalUrl && (
-            <a href={finalUrl} target="_blank" rel="noopener noreferrer">
-              <Button variant="outline" className="w-full gap-2 text-muted-foreground">
-                <ExternalLink className="w-4 h-4" />
-                새 탭에서 열기 (다운로드 안 될 때)
+          {finalUrl ? (
+            <a href={downloadHref(finalUrl, project.topic ?? "")} download>
+              <Button className="w-full gap-2 h-11">
+                <Download className="w-4 h-4" />
+                영상 다운로드
               </Button>
             </a>
+          ) : (
+            <Button className="w-full gap-2 h-11" disabled>
+              <Download className="w-4 h-4" />
+              영상 다운로드
+            </Button>
           )}
 
           <div className="grid grid-cols-2 gap-3">
