@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   ImageIcon, Loader2, ChevronRight, ChevronLeft,
   RefreshCw, Upload, X, Plus, Film, Sparkles,
-  AlertTriangle, CheckCircle2, GripVertical, ChevronUp, ChevronDown,
+  AlertTriangle, CheckCircle2, GripVertical, ChevronUp, ChevronDown, Save,
 } from "lucide-react";
 import type { VideoProject } from "@/app/create/page";
 
@@ -17,11 +17,14 @@ type Props = {
   updateProject: (data: Partial<VideoProject>) => void;
   onNext: () => void;
   onPrev: () => void;
+  onSave: () => void;
 };
 
 type MediaItem = { url: string; type: "image" | "video"; name?: string };
 
-export function StepImages({ project, updateProject, onNext, onPrev }: Props) {
+export function StepImages({ project, updateProject, onNext, onPrev, onSave }: Props) {
+  const [justSaved, setJustSaved] = useState(false);
+  const handleSave = () => { onSave(); setJustSaved(true); setTimeout(() => setJustSaved(false), 2000); };
   const [loading, setLoading] = useState(false);
   const [mediaItems, setMediaItems] = useState<MediaItem[]>(
     (project.imageUrls ?? []).map((url) => ({ url, type: "image" as const }))
@@ -423,10 +426,14 @@ export function StepImages({ project, updateProject, onNext, onPrev }: Props) {
         </Tabs>
 
         {/* Navigation */}
-        <div className="flex justify-between pt-1">
+        <div className="flex items-center justify-between pt-1">
           <Button variant="outline" onClick={onPrev} className="gap-2">
             <ChevronLeft className="w-4 h-4" />
             이전
+          </Button>
+          <Button variant="ghost" size="sm" onClick={handleSave} disabled={mediaItems.length === 0} className="gap-1.5 text-muted-foreground">
+            <Save className="w-3.5 h-3.5" />
+            {justSaved ? "저장됨 ✓" : "임시 저장"}
           </Button>
           <Button onClick={() => { updateProject({ imageUrls: mediaItems.map(m => m.url) }); onNext(); }} disabled={mediaItems.length === 0} className="gap-2">
             다음: 영상 렌더링

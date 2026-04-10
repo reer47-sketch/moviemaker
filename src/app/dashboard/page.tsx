@@ -9,6 +9,7 @@ import {
   Plus, Film, Clock, CheckCircle, AlertCircle,
   Play, Download, Trash2, Zap, Loader2,
 } from "lucide-react";
+import { NavUser } from "@/components/NavUser";
 
 type Video = {
   id: string;
@@ -81,12 +82,15 @@ export default function DashboardPage() {
           </div>
           <span className="font-bold text-lg">MovieMaker</span>
         </Link>
-        <Link href="/create">
-          <Button size="sm" className="gap-2">
-            <Zap className="w-4 h-4" />
-            새 영상 만들기
-          </Button>
-        </Link>
+        <div className="flex items-center gap-3">
+          <NavUser />
+          <Link href="/create">
+            <Button size="sm" className="gap-2">
+              <Zap className="w-4 h-4" />
+              새 영상 만들기
+            </Button>
+          </Link>
+        </div>
       </nav>
 
       <div className="max-w-6xl mx-auto px-6 py-10">

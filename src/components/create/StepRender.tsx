@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Clapperboard, Loader2, ChevronRight, ChevronLeft, CheckCircle, Film } from "lucide-react";
+import { Clapperboard, Loader2, ChevronRight, ChevronLeft, CheckCircle, Film, Save } from "lucide-react";
 import type { VideoProject } from "@/app/create/page";
 
 type Props = {
@@ -13,6 +13,7 @@ type Props = {
   updateProject: (data: Partial<VideoProject>) => void;
   onNext: () => void;
   onPrev: () => void;
+  onSave: () => void;
 };
 
 const RENDER_STEPS = [
@@ -24,7 +25,9 @@ const RENDER_STEPS = [
   "영상 인코딩 중...",
 ];
 
-export function StepRender({ project, updateProject, onNext, onPrev }: Props) {
+export function StepRender({ project, updateProject, onNext, onPrev, onSave }: Props) {
+  const [justSaved, setJustSaved] = useState(false);
+  const handleSave = () => { onSave(); setJustSaved(true); setTimeout(() => setJustSaved(false), 2000); };
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [currentStepMsg, setCurrentStepMsg] = useState("");
@@ -143,10 +146,14 @@ export function StepRender({ project, updateProject, onNext, onPrev }: Props) {
         )}
 
         {/* Navigation */}
-        <div className="flex justify-between pt-2">
+        <div className="flex items-center justify-between pt-2">
           <Button variant="outline" onClick={onPrev} disabled={loading} className="gap-2">
             <ChevronLeft className="w-4 h-4" />
             이전
+          </Button>
+          <Button variant="ghost" size="sm" onClick={handleSave} disabled={!done} className="gap-1.5 text-muted-foreground">
+            <Save className="w-3.5 h-3.5" />
+            {justSaved ? "저장됨 ✓" : "임시 저장"}
           </Button>
           <Button onClick={handleNext} disabled={!done} className="gap-2">
             다음: 자막 삽입

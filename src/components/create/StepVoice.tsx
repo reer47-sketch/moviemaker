@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Mic, Loader2, ChevronRight, ChevronLeft, Play, Pause, Volume2 } from "lucide-react";
+import { Mic, Loader2, ChevronRight, ChevronLeft, Play, Pause, Volume2, Save } from "lucide-react";
 import type { VideoProject } from "@/app/create/page";
 
 type Props = {
@@ -12,6 +12,7 @@ type Props = {
   updateProject: (data: Partial<VideoProject>) => void;
   onNext: () => void;
   onPrev: () => void;
+  onSave: () => void;
 };
 
 const VOICES = [
@@ -21,7 +22,9 @@ const VOICES = [
   { id: "josh",   name: "Echo", desc: "젊고 에너지 넘치는 남성 목소리", gender: "남성" },
 ];
 
-export function StepVoice({ project, updateProject, onNext, onPrev }: Props) {
+export function StepVoice({ project, updateProject, onNext, onPrev, onSave }: Props) {
+  const [justSaved, setJustSaved] = useState(false);
+  const handleSave = () => { onSave(); setJustSaved(true); setTimeout(() => setJustSaved(false), 2000); };
   const [selectedVoice, setSelectedVoice] = useState(VOICES[0].id);
   const [loading, setLoading] = useState(false);
   const [audioUrl, setAudioUrl] = useState(project.audioUrl ?? "");
@@ -208,10 +211,14 @@ export function StepVoice({ project, updateProject, onNext, onPrev }: Props) {
         )}
 
         {/* Navigation */}
-        <div className="flex justify-between pt-2">
+        <div className="flex items-center justify-between pt-2">
           <Button variant="outline" onClick={onPrev} className="gap-2">
             <ChevronLeft className="w-4 h-4" />
             이전
+          </Button>
+          <Button variant="ghost" size="sm" onClick={handleSave} disabled={!audioUrl} className="gap-1.5 text-muted-foreground">
+            <Save className="w-3.5 h-3.5" />
+            {justSaved ? "저장됨 ✓" : "임시 저장"}
           </Button>
           <Button onClick={handleNext} disabled={!audioUrl} className="gap-2">
             다음: 이미지 생성

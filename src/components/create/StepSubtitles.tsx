@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
-import { Captions, Loader2, ChevronRight, ChevronLeft, CheckCircle, Type } from "lucide-react";
+import { Captions, Loader2, ChevronRight, ChevronLeft, CheckCircle, Type, Save } from "lucide-react";
 import type { VideoProject } from "@/app/create/page";
 
 type Props = {
@@ -13,6 +13,7 @@ type Props = {
   updateProject: (data: Partial<VideoProject>) => void;
   onNext: () => void;
   onPrev: () => void;
+  onSave: () => void;
 };
 
 const SUBTITLE_STYLES = [
@@ -31,7 +32,9 @@ const FONT_OPTIONS = [
 
 type SubtitleEntry = { start: number; end: number; text: string };
 
-export function StepSubtitles({ project, updateProject, onNext, onPrev }: Props) {
+export function StepSubtitles({ project, updateProject, onNext, onPrev, onSave }: Props) {
+  const [justSaved, setJustSaved] = useState(false);
+  const handleSave = () => { onSave(); setJustSaved(true); setTimeout(() => setJustSaved(false), 2000); };
   const [loading, setLoading] = useState(false);
   const [subtitles, setSubtitles] = useState<SubtitleEntry[]>([]);
   const [selectedStyle, setSelectedStyle] = useState("white");
@@ -194,10 +197,14 @@ export function StepSubtitles({ project, updateProject, onNext, onPrev }: Props)
         )}
 
         {/* Navigation */}
-        <div className="flex justify-between pt-2">
+        <div className="flex items-center justify-between pt-2">
           <Button variant="outline" onClick={onPrev} disabled={loading} className="gap-2">
             <ChevronLeft className="w-4 h-4" />
             이전
+          </Button>
+          <Button variant="ghost" size="sm" onClick={handleSave} disabled={!subtitledVideoUrl} className="gap-1.5 text-muted-foreground">
+            <Save className="w-3.5 h-3.5" />
+            {justSaved ? "저장됨 ✓" : "임시 저장"}
           </Button>
           <Button
             onClick={() => { updateProject({ subtitledVideoUrl }); onNext(); }}

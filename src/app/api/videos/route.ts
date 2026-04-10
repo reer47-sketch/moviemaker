@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
         video_url: body.videoUrl,
         subtitled_video_url: body.subtitledVideoUrl,
         status: "completed",
-        user_id: null,
+        user_id: body.userId ?? null,
       })
       .select()
       .single();

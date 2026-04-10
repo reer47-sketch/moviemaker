@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Sparkles, Loader2, ChevronRight, RefreshCw, FileText,
-  Pencil, Check, Store, PawPrint, Package, PenLine,
+  Pencil, Check, Store, PawPrint, Package, PenLine, Save,
 } from "lucide-react";
 import type { VideoProject } from "@/app/create/page";
 
@@ -14,6 +14,7 @@ type Props = {
   project: Partial<VideoProject>;
   updateProject: (data: Partial<VideoProject>) => void;
   onNext: () => void;
+  onSave: () => void;
 };
 
 type FieldDef = { key: string; label: string; placeholder: string; multiline?: boolean };
@@ -98,7 +99,9 @@ function buildTopic(template: Template | null, fields: Record<string, string>, f
   return name ? `${template.label} — ${name}` : template.label;
 }
 
-export function StepScript({ project, updateProject, onNext }: Props) {
+export function StepScript({ project, updateProject, onNext, onSave }: Props) {
+  const [justSaved, setJustSaved] = useState(false);
+  const handleSave = () => { onSave(); setJustSaved(true); setTimeout(() => setJustSaved(false), 2000); };
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [fields, setFields] = useState<Record<string, string>>({});
   const [freeTopic, setFreeTopic] = useState(project.topic ?? "");
@@ -319,7 +322,11 @@ export function StepScript({ project, updateProject, onNext }: Props) {
           </div>
         )}
 
-        <div className="flex justify-end pt-1">
+        <div className="flex items-center justify-between pt-1">
+          <Button variant="ghost" size="sm" onClick={handleSave} disabled={!script} className="gap-1.5 text-muted-foreground">
+            <Save className="w-3.5 h-3.5" />
+            {justSaved ? "저장됨 ✓" : "임시 저장"}
+          </Button>
           <Button onClick={() => { updateProject({ topic: buildTopic(selectedTemplate, fields, freeTopic), script, scenes }); onNext(); }} disabled={!script} className="gap-2">
             다음: 음성 생성
             <ChevronRight className="w-4 h-4" />
