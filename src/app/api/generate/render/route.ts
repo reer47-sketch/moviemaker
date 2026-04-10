@@ -40,43 +40,48 @@ export async function POST(req: NextRequest) {
 
     const secondsPerScene = audioDuration / scenes.length;
 
-    // Download media files → all converted to JPEG frames for FFmpeg
+    // Download media — images → JPEG (sharp), videos → kept as-is
     const sharp = (await import("sharp")).default;
-    const imageFiles: string[] = [];
+    type MediaFile = { file: string; isVideo: boolean };
+    const mediaFiles: MediaFile[] = [];
+
     for (let i = 0; i < imageUrls.length; i++) {
-      const imgRes = await fetch(imageUrls[i]);
-      const contentType = imgRes.headers.get("content-type") ?? "";
-      const buf = Buffer.from(await imgRes.arrayBuffer());
-      const imgFile = path.join(tmpDir, `img-${ts}-${i}.jpg`);
+      const res = await fetch(imageUrls[i]);
+      const contentType = res.headers.get("content-type") ?? "";
+      const buf = Buffer.from(await res.arrayBuffer());
 
       const isVideo =
         contentType.startsWith("video/") ||
         /\.(mp4|mov|avi|webm|mkv|m4v)$/i.test(imageUrls[i]);
 
       if (isVideo) {
-        // Save video temporarily, then extract first frame with FFmpeg
-        const tempVid = path.join(tmpDir, `tmpvid-${ts}-${i}.mp4`);
-        await fs.writeFile(tempVid, buf);
-        await execAsync(
-          `${FFMPEG} -i "${tempVid}" -vframes 1 -q:v 2 "${imgFile}" -y`,
-          { timeout: 30000 }
-        );
-        await fs.unlink(tempVid).catch(() => {});
+        const vidFile = path.join(tmpDir, `vid-${ts}-${i}.mp4`);
+        await fs.writeFile(vidFile, buf);
+        mediaFiles.push({ file: vidFile, isVideo: true });
       } else {
-        // Image: auto-rotate via EXIF, convert to JPEG
+        const imgFile = path.join(tmpDir, `img-${ts}-${i}.jpg`);
         await sharp(buf).rotate().jpeg({ quality: 90 }).toFile(imgFile);
+        mediaFiles.push({ file: imgFile, isVideo: false });
       }
-
-      imageFiles.push(imgFile);
     }
 
-    // Build filter_complex: each image as a video segment, then concat
-    const n = imageFiles.length;
-    const inputs = imageFiles.map((f) => `-loop 1 -t ${secondsPerScene.toFixed(2)} -i "${f}"`).join(" ");
-    const filterParts = imageFiles.map((_, i) =>
+    // Build FFmpeg inputs:
+    //   이미지 → -loop 1 -t N (정지 이미지를 N초 동안)
+    //   영상   → -stream_loop -1 -t N (영상 클립을 N초로 트림/루프)
+    const n = mediaFiles.length;
+    const dur = secondsPerScene.toFixed(2);
+    const inputs = mediaFiles
+      .map(({ file, isVideo }) =>
+        isVideo
+          ? `-stream_loop -1 -t ${dur} -i "${file}"`
+          : `-loop 1 -t ${dur} -i "${file}"`
+      )
+      .join(" ");
+
+    const filterParts = mediaFiles.map((_, i) =>
       `[${i}:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=25[v${i}]`
     );
-    const concatInputs = imageFiles.map((_, i) => `[v${i}]`).join("");
+    const concatInputs = mediaFiles.map((_, i) => `[v${i}]`).join("");
     const filterComplex = [...filterParts, `${concatInputs}concat=n=${n}:v=1:a=0[vout]`].join(";");
 
     const outputFile = path.join(tmpDir, `video-${ts}.mp4`);
@@ -103,7 +108,7 @@ export async function POST(req: NextRequest) {
     await Promise.all([
       fs.unlink(audioFile).catch(() => {}),
       fs.unlink(outputFile).catch(() => {}),
-      ...imageFiles.map((f) => fs.unlink(f).catch(() => {})),
+      ...mediaFiles.map(({ file }) => fs.unlink(file).catch(() => {})),
     ]);
 
     return NextResponse.json({ videoUrl: data.publicUrl });
