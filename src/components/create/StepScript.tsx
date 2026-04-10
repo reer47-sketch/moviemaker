@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Sparkles, Loader2, ChevronRight, RefreshCw, FileText,
-  Pencil, Check, Store, PawPrint, Package,
+  Pencil, Check, Store, PawPrint, Package, PenLine,
 } from "lucide-react";
 import type { VideoProject } from "@/app/create/page";
 
@@ -16,49 +16,118 @@ type Props = {
   onNext: () => void;
 };
 
-const TEMPLATES = [
+type FieldDef = { key: string; label: string; placeholder: string; multiline?: boolean };
+type Template = {
+  id: string;
+  icon: React.ElementType;
+  label: string;
+  color: string;
+  border: string;
+  activeBg: string;
+  fields: FieldDef[];
+};
+
+const TEMPLATES: Template[] = [
   {
+    id: "store",
     icon: Store,
     label: "가게 홍보",
     color: "text-amber-400",
-    bg: "bg-amber-500/10 border-amber-500/20",
-    prompt: "우리 가게를 홍보하는 영상 — 가게 이름, 메뉴/상품, 분위기, 오시는 길을 소개하는 내용",
+    border: "border-amber-500/20",
+    activeBg: "bg-amber-500/10 border-amber-500/40",
+    fields: [
+      { key: "name",     label: "가게 이름",           placeholder: "예) 맛있는 한식당" },
+      { key: "category", label: "업종 / 카테고리",      placeholder: "예) 한식 레스토랑, 카페, 미용실" },
+      { key: "menu",     label: "주요 메뉴 / 서비스",   placeholder: "예) 비빔밥, 된장찌개, 삼겹살" },
+      { key: "strength", label: "특징 / 강점",          placeholder: "예) 20년 전통, 국내산 재료만 사용" },
+      { key: "location", label: "위치 / 영업시간",      placeholder: "예) 강남역 3번 출구, 11시~22시" },
+      { key: "extra",    label: "추가로 홍보하고 싶은 말", placeholder: "예) 포장 및 배달 가능, 단체 예약 문의 환영", multiline: true },
+    ],
   },
   {
+    id: "pet",
     icon: PawPrint,
     label: "애완동물 소개",
     color: "text-rose-400",
-    bg: "bg-rose-500/10 border-rose-500/20",
-    prompt: "내가 키우는 애완동물을 소개하는 영상 — 동물 종류, 이름, 성격, 일상, 키우는 팁",
+    border: "border-rose-500/20",
+    activeBg: "bg-rose-500/10 border-rose-500/40",
+    fields: [
+      { key: "species",     label: "동물 종류",            placeholder: "예) 골든 리트리버, 페르시안 고양이" },
+      { key: "name",        label: "이름",                 placeholder: "예) 초코" },
+      { key: "age",         label: "나이 / 외모 특징",     placeholder: "예) 2살, 갈색 털, 눈이 큼" },
+      { key: "personality", label: "성격",                 placeholder: "예) 활발하고 애교가 많음" },
+      { key: "hobby",       label: "좋아하는 것 / 특기",   placeholder: "예) 공 물어오기, 간식 먹기" },
+      { key: "extra",       label: "추가로 전하고 싶은 말", placeholder: "예) 우리 집 막내이자 귀염둥이입니다!", multiline: true },
+    ],
   },
   {
+    id: "product",
     icon: Package,
     label: "제품 리뷰",
     color: "text-blue-400",
-    bg: "bg-blue-500/10 border-blue-500/20",
-    prompt: "내가 사용한 제품을 리뷰하는 영상 — 제품 소개, 장단점, 사용 후기, 추천 대상",
+    border: "border-blue-500/20",
+    activeBg: "bg-blue-500/10 border-blue-500/40",
+    fields: [
+      { key: "name",     label: "제품 이름 / 브랜드", placeholder: "예) 삼성 갤럭시 버즈2 프로" },
+      { key: "category", label: "제품 종류",          placeholder: "예) 무선 이어폰, 스킨케어, 커피 메이커" },
+      { key: "reason",   label: "구매 이유",          placeholder: "예) 출퇴근 음악 감상, 노이즈 캔슬링 필요" },
+      { key: "pros",     label: "장점",               placeholder: "예) 음질 좋음, 착용감 편함, 배터리 오래 감" },
+      { key: "cons",     label: "단점",               placeholder: "예) 가격이 높음, 케이스가 미끄러움" },
+      { key: "target",   label: "추천 대상",          placeholder: "예) 음악 마니아, 재택근무자" },
+      { key: "extra",    label: "추가 한마디",        placeholder: "예) 이 가격에 이 퀄리티면 강추합니다!", multiline: true },
+    ],
   },
 ];
 
 type Scene = { title: string; content: string };
 
+/** 입력된 필드만 모아 Claude에게 보낼 프롬프트 문자열 생성 */
+function buildPrompt(template: Template, fields: Record<string, string>): string {
+  const lines = template.fields
+    .filter((f) => fields[f.key]?.trim())
+    .map((f) => `${f.label}: ${fields[f.key].trim()}`);
+
+  if (!lines.length) return `${template.label} 영상`;
+  return `${template.label} 영상\n\n${lines.join("\n")}`;
+}
+
+/** 대시보드/저장용 짧은 주제 문자열 */
+function buildTopic(template: Template | null, fields: Record<string, string>, freeTopic: string): string {
+  if (!template) return freeTopic;
+  const name = fields["name"]?.trim();
+  return name ? `${template.label} — ${name}` : template.label;
+}
+
 export function StepScript({ project, updateProject, onNext }: Props) {
-  const [topic, setTopic] = useState(project.topic ?? "");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [fields, setFields] = useState<Record<string, string>>({});
+  const [freeTopic, setFreeTopic] = useState(project.topic ?? "");
   const [loading, setLoading] = useState(false);
   const [script, setScript] = useState(project.script ?? "");
   const [scenes, setScenes] = useState<Scene[]>(project.scenes ?? []);
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [editBuf, setEditBuf] = useState<Scene>({ title: "", content: "" });
 
+  const selectedTemplate = TEMPLATES.find((t) => t.id === selectedId) ?? null;
+
+  const setField = (key: string, value: string) =>
+    setFields((prev) => ({ ...prev, [key]: value }));
+
+  const canGenerate = selectedTemplate
+    ? selectedTemplate.fields.some((f) => fields[f.key]?.trim())
+    : freeTopic.trim().length > 0;
+
   const generateScript = async () => {
-    if (!topic.trim()) return;
+    if (!canGenerate) return;
     setLoading(true);
     setEditingIdx(null);
+    const prompt = selectedTemplate ? buildPrompt(selectedTemplate, fields) : freeTopic;
+    const topic = buildTopic(selectedTemplate, fields, freeTopic);
     try {
       const res = await fetch("/api/generate/script", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic }),
+        body: JSON.stringify({ topic: prompt }),
       });
       const data = await res.json();
       setScript(data.script);
@@ -71,11 +140,7 @@ export function StepScript({ project, updateProject, onNext }: Props) {
     }
   };
 
-  const startEdit = (i: number) => {
-    setEditingIdx(i);
-    setEditBuf({ ...scenes[i] });
-  };
-
+  const startEdit = (i: number) => { setEditingIdx(i); setEditBuf({ ...scenes[i] }); };
   const saveEdit = (i: number) => {
     const updated = scenes.map((s, idx) => (idx === i ? editBuf : s));
     const newScript = updated.map((s) => s.content).join(" ");
@@ -83,11 +148,6 @@ export function StepScript({ project, updateProject, onNext }: Props) {
     setScript(newScript);
     updateProject({ scenes: updated, script: newScript });
     setEditingIdx(null);
-  };
-
-  const handleNext = () => {
-    updateProject({ topic, script, scenes });
-    onNext();
   };
 
   return (
@@ -107,43 +167,101 @@ export function StepScript({ project, updateProject, onNext }: Props) {
       </CardHeader>
       <CardContent className="space-y-5">
 
-        {/* Templates */}
+        {/* Template buttons */}
         <div className="space-y-2">
           <label className="text-sm font-medium">빠른 템플릿</label>
-          <div className="grid grid-cols-3 gap-2">
-            {TEMPLATES.map((t) => (
-              <button
-                key={t.label}
-                onClick={() => setTopic(t.prompt)}
-                className={`p-3 rounded-xl border text-left transition-all hover:scale-[1.02] ${t.bg}`}
-              >
-                <t.icon className={`w-4 h-4 mb-1.5 ${t.color}`} />
-                <div className={`text-xs font-semibold ${t.color}`}>{t.label}</div>
-              </button>
-            ))}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {TEMPLATES.map((t) => {
+              const active = selectedId === t.id;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => {
+                    setSelectedId(active ? null : t.id);
+                    setFields({});
+                  }}
+                  className={`p-3 rounded-xl border text-left transition-all hover:scale-[1.02]
+                    ${active ? t.activeBg : `bg-muted/30 ${t.border} hover:bg-muted/50`}`}
+                >
+                  <t.icon className={`w-4 h-4 mb-1.5 ${t.color}`} />
+                  <div className={`text-xs font-semibold ${active ? t.color : "text-foreground"}`}>{t.label}</div>
+                </button>
+              );
+            })}
+            {/* 직접 입력 */}
+            <button
+              onClick={() => { setSelectedId(null); setFields({}); }}
+              className={`p-3 rounded-xl border text-left transition-all hover:scale-[1.02]
+                ${!selectedId ? "bg-primary/10 border-primary/40" : "bg-muted/30 border-border/30 hover:bg-muted/50"}`}
+            >
+              <PenLine className={`w-4 h-4 mb-1.5 ${!selectedId ? "text-primary" : "text-muted-foreground"}`} />
+              <div className={`text-xs font-semibold ${!selectedId ? "text-primary" : "text-muted-foreground"}`}>직접 입력</div>
+            </button>
           </div>
         </div>
 
-        {/* Topic Input */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium">영상 주제</label>
-          <div className="flex gap-3">
+        {/* Template fields */}
+        {selectedTemplate ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <selectedTemplate.icon className={`w-4 h-4 ${selectedTemplate.color}`} />
+              <span className="text-sm font-medium">{selectedTemplate.label} 정보 입력</span>
+              <span className="text-xs text-muted-foreground ml-1">비워두면 해당 항목은 생략됩니다</span>
+            </div>
+            <div className="space-y-2.5">
+              {selectedTemplate.fields.map((f) =>
+                f.multiline ? (
+                  <div key={f.key} className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">{f.label}</label>
+                    <textarea
+                      rows={2}
+                      value={fields[f.key] ?? ""}
+                      onChange={(e) => setField(f.key, e.target.value)}
+                      placeholder={f.placeholder}
+                      className="w-full px-3 py-2 rounded-xl bg-muted border border-border/50 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all resize-none leading-relaxed"
+                    />
+                  </div>
+                ) : (
+                  <div key={f.key} className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">{f.label}</label>
+                    <input
+                      type="text"
+                      value={fields[f.key] ?? ""}
+                      onChange={(e) => setField(f.key, e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && generateScript()}
+                      placeholder={f.placeholder}
+                      className="w-full px-3 py-2 rounded-xl bg-muted border border-border/50 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all"
+                    />
+                  </div>
+                )
+              )}
+            </div>
+          </div>
+        ) : (
+          /* Free text input */
+          <div className="space-y-2">
+            <label className="text-sm font-medium">영상 주제</label>
             <input
               type="text"
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
+              value={freeTopic}
+              onChange={(e) => setFreeTopic(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && generateScript()}
-              placeholder="템플릿을 선택하거나 직접 입력하세요..."
-              className="flex-1 px-4 py-3 rounded-xl bg-muted border border-border/50 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all"
+              placeholder="원하는 영상 주제를 자유롭게 입력하세요..."
+              className="w-full px-4 py-3 rounded-xl bg-muted border border-border/50 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all"
             />
-            <Button onClick={generateScript} disabled={!topic.trim() || loading} className="gap-2 px-5">
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-              {loading ? "생성 중..." : "생성"}
-            </Button>
           </div>
-        </div>
+        )}
 
-        {/* Script Result */}
+        {/* Generate button */}
+        <Button onClick={generateScript} disabled={!canGenerate || loading} className="w-full gap-2 h-11">
+          {loading ? (
+            <><Loader2 className="w-4 h-4 animate-spin" /> 스크립트 생성 중...</>
+          ) : (
+            <><Sparkles className="w-4 h-4" /> {script ? "스크립트 재생성" : "스크립트 생성하기"}</>
+          )}
+        </Button>
+
+        {/* Script result */}
         {scenes.length > 0 && (
           <div className="space-y-3">
             <div className="flex items-center justify-between">
@@ -175,7 +293,6 @@ export function StepScript({ project, updateProject, onNext }: Props) {
                       </Button>
                     )}
                   </div>
-
                   {editingIdx === i ? (
                     <div className="space-y-2">
                       <input
@@ -203,7 +320,7 @@ export function StepScript({ project, updateProject, onNext }: Props) {
         )}
 
         <div className="flex justify-end pt-1">
-          <Button onClick={handleNext} disabled={!script} className="gap-2">
+          <Button onClick={() => { updateProject({ topic: buildTopic(selectedTemplate, fields, freeTopic), script, scenes }); onNext(); }} disabled={!script} className="gap-2">
             다음: 음성 생성
             <ChevronRight className="w-4 h-4" />
           </Button>
