@@ -80,18 +80,27 @@ export function StepImages({ project, updateProject, onNext, onPrev }: Props) {
     const newItems: MediaItem[] = [];
     try {
       for (const file of Array.from(files)) {
-        const fd = new FormData();
-        fd.append("file", file);
-        fd.append("type", file.type.startsWith("video/") ? "videos" : "images");
-        const res = await fetch("/api/upload", { method: "POST", body: fd });
-        const data = await res.json();
-        if (data.url) {
-          newItems.push({
-            url: data.url,
-            type: file.type.startsWith("video/") ? "video" : "image",
-            name: file.name,
-          });
-        }
+        // 1. Get a signed upload URL from server (tiny request, no file data)
+        const signedRes = await fetch("/api/upload/signed-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fileName: file.name, contentType: file.type }),
+        });
+        const { signedUrl, publicUrl } = await signedRes.json();
+        if (!signedUrl) continue;
+
+        // 2. Upload file directly to Supabase from browser (bypasses Vercel 4MB limit)
+        await fetch(signedUrl, {
+          method: "PUT",
+          headers: { "Content-Type": file.type },
+          body: file,
+        });
+
+        newItems.push({
+          url: publicUrl,
+          type: file.type.startsWith("video/") ? "video" : "image",
+          name: file.name,
+        });
       }
       const updated = [...mediaItems, ...newItems];
       setMediaItems(updated);
