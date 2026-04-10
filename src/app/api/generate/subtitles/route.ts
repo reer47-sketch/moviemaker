@@ -9,20 +9,67 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 type SubtitleEntry = { start: number; end: number; text: string };
 
+/** Whisper timestamps + original script text → subtitle entries */
+function mapScriptToSegments(
+  script: string,
+  whisperSegs: { start: number; end: number }[]
+): SubtitleEntry[] {
+  if (!whisperSegs.length) return [];
+
+  const words = script.split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+
+  const totalDuration =
+    whisperSegs[whisperSegs.length - 1].end - whisperSegs[0].start;
+
+  const result: SubtitleEntry[] = [];
+  let wordIdx = 0;
+
+  for (let i = 0; i < whisperSegs.length; i++) {
+    const seg = whisperSegs[i];
+    const segDuration = seg.end - seg.start;
+    const isLast = i === whisperSegs.length - 1;
+
+    const wordsForSeg = isLast
+      ? words.length - wordIdx
+      : Math.max(1, Math.round(words.length * (segDuration / totalDuration)));
+
+    const chunk = words.slice(wordIdx, wordIdx + wordsForSeg).join(" ");
+    wordIdx += wordsForSeg;
+
+    if (chunk) {
+      result.push({ start: seg.start, end: seg.end, text: chunk });
+    }
+  }
+
+  // If any words remain (rounding error), append to last entry
+  if (wordIdx < words.length && result.length > 0) {
+    result[result.length - 1].text +=
+      " " + words.slice(wordIdx).join(" ");
+  }
+
+  return result;
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const { audioUrl, videoUrl, style } = await req.json();
+    const { audioUrl, videoUrl, script, style, fontSize, fontName } =
+      await req.json();
 
     if (!audioUrl || !videoUrl) {
-      return NextResponse.json({ error: "오디오와 비디오 URL이 필요합니다" }, { status: 400 });
+      return NextResponse.json(
+        { error: "오디오와 비디오 URL이 필요합니다" },
+        { status: 400 }
+      );
     }
 
-    // Download audio for Whisper
+    // Download audio for Whisper (timing only)
     const audioRes = await fetch(audioUrl);
     const audioBuffer = await audioRes.arrayBuffer();
-    const audioFile = new File([audioBuffer], "audio.mp3", { type: "audio/mpeg" });
+    const audioFile = new File([audioBuffer], "audio.mp3", {
+      type: "audio/mpeg",
+    });
 
-    // Transcribe with Whisper
     const transcription = await openai.audio.transcriptions.create({
       file: audioFile,
       model: "whisper-1",
@@ -31,14 +78,24 @@ export async function POST(req: NextRequest) {
       timestamp_granularities: ["segment"],
     });
 
-    const subtitles: SubtitleEntry[] = (transcription.segments ?? []).map((seg) => ({
-      start: seg.start,
-      end: seg.end,
-      text: seg.text.trim(),
+    const whisperSegs = (transcription.segments ?? []).map((s) => ({
+      start: s.start,
+      end: s.end,
     }));
 
-    // Burn subtitles into video
-    const subtitledVideoUrl = await burnSubtitles(videoUrl, subtitles, style);
+    // Use original script text mapped onto Whisper timings
+    const subtitles: SubtitleEntry[] = script
+      ? mapScriptToSegments(script, whisperSegs)
+      : whisperSegs.map((s, i) => ({
+          ...s,
+          text: (transcription.segments ?? [])[i]?.text?.trim() ?? "",
+        }));
+
+    const subtitledVideoUrl = await burnSubtitles(videoUrl, subtitles, {
+      style: style ?? "white",
+      fontSize: fontSize ?? 24,
+      fontName: fontName ?? "",
+    });
 
     return NextResponse.json({ subtitles, subtitledVideoUrl });
   } catch (error) {
@@ -53,7 +110,7 @@ export async function POST(req: NextRequest) {
 async function burnSubtitles(
   videoUrl: string,
   subtitles: SubtitleEntry[],
-  style: string
+  options: { style: string; fontSize: number; fontName: string }
 ): Promise<string> {
   const ffmpegInstaller = await import("@ffmpeg-installer/ffmpeg");
   const ffprobeInstaller = await import("@ffprobe-installer/ffprobe");
@@ -62,15 +119,15 @@ async function burnSubtitles(
   ffmpeg.setFfprobePath(ffprobeInstaller.path);
 
   const tmpDir = os.tmpdir();
-  const tempVideo = path.join(tmpDir, `input-${Date.now()}.mp4`);
-  const srtFile = path.join(tmpDir, `subs-${Date.now()}.srt`);
-  const outputVideo = path.join(tmpDir, `subtitled-${Date.now()}.mp4`);
+  const ts = Date.now();
+  const tempVideo = path.join(tmpDir, `input-${ts}.mp4`);
+  const srtFile = path.join(tmpDir, `subs-${ts}.srt`);
+  const outputVideo = path.join(tmpDir, `subtitled-${ts}.mp4`);
 
   try {
     // Download video
     const videoRes = await fetch(videoUrl);
-    const videoBuffer = await videoRes.arrayBuffer();
-    await fs.writeFile(tempVideo, Buffer.from(videoBuffer));
+    await fs.writeFile(tempVideo, Buffer.from(await videoRes.arrayBuffer()));
 
     // Generate SRT
     const formatTime = (s: number) => {
@@ -82,24 +139,33 @@ async function burnSubtitles(
     };
 
     const srtContent = subtitles
-      .map((sub, i) => `${i + 1}\n${formatTime(sub.start)} --> ${formatTime(sub.end)}\n${sub.text}`)
+      .map(
+        (sub, i) =>
+          `${i + 1}\n${formatTime(sub.start)} --> ${formatTime(sub.end)}\n${sub.text}`
+      )
       .join("\n\n");
 
     await fs.writeFile(srtFile, srtContent, "utf-8");
 
-    // Style
+    // Build force_style
+    const { style, fontSize, fontName } = options;
     const fontColor = style === "yellow" ? "&H0000FFFF" : "&H00FFFFFF";
-    const backColor = style === "outline" ? "&H00000000" : "&H80000000";
+    const backColor =
+      style === "outline" ? "&H00000000" : "&H80000000";
     const borderStyle = style === "outline" ? "3" : "4";
     const outline = style === "outline" ? "3" : "1";
 
-    const srtPathEscaped = srtFile.replace(/\\/g, "/").replace(/:/g, "\\:");
+    const fontPart = fontName ? `FontName=${fontName},` : "";
+    const forceStyle = `${fontPart}FontSize=${fontSize},PrimaryColour=${fontColor},BackColour=${backColor},BorderStyle=${borderStyle},Outline=${outline},Alignment=2`;
 
-    // Burn with ffmpeg
+    const srtPathEscaped = srtFile
+      .replace(/\\/g, "/")
+      .replace(/:/g, "\\:");
+
     await new Promise<void>((resolve, reject) => {
       ffmpeg(tempVideo)
         .videoFilters(
-          `subtitles='${srtPathEscaped}':force_style='FontSize=22,PrimaryColour=${fontColor},BackColour=${backColor},BorderStyle=${borderStyle},Outline=${outline},Alignment=2'`
+          `subtitles='${srtPathEscaped}':force_style='${forceStyle}'`
         )
         .audioCodec("copy")
         .output(outputVideo)
@@ -111,7 +177,7 @@ async function burnSubtitles(
     // Upload to Supabase
     const supabase = createServiceClient();
     const outputBuffer = await fs.readFile(outputVideo);
-    const fileName = `videos/subtitled-${Date.now()}.mp4`;
+    const fileName = `videos/subtitled-${ts}.mp4`;
 
     const { error } = await supabase.storage
       .from("media")
@@ -122,7 +188,7 @@ async function burnSubtitles(
     const { data } = supabase.storage.from("media").getPublicUrl(fileName);
     return data.publicUrl;
   } catch (e) {
-    console.error("FFmpeg error, returning original video:", e);
+    console.error("FFmpeg subtitle error:", e);
     return videoUrl;
   } finally {
     await Promise.all([
