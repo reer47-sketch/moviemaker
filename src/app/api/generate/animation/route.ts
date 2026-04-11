@@ -8,14 +8,13 @@ const REPLICATE_TOKEN = process.env.REPLICATE_API_TOKEN ?? "";
 type Prediction = { id: string; status: string; output: unknown; error?: string };
 
 async function createPrediction(prompt: string): Promise<Prediction> {
-  const res = await fetch("https://api.replicate.com/v1/predictions", {
+  const res = await fetch("https://api.replicate.com/v1/models/wavespeedai/wan-2.1-t2v-480p/predictions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${REPLICATE_TOKEN}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "wavespeedai/wan-2.1-t2v-480p",
       input: {
         prompt,
         negative_prompt: "realistic photo, complex background, 3D render, watermark, text, ugly, blurry",
