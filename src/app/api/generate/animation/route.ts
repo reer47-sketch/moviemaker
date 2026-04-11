@@ -7,23 +7,33 @@ const REPLICATE_TOKEN = process.env.REPLICATE_API_TOKEN ?? "";
 
 type Prediction = { id: string; status: string; output: unknown; error?: string };
 
-async function createPrediction(prompt: string): Promise<Prediction> {
-  const res = await fetch("https://api.replicate.com/v1/models/wavespeedai/wan-2.1-t2v-480p/predictions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${REPLICATE_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      input: {
-        prompt,
-        negative_prompt: "realistic photo, complex background, 3D render, watermark, text, ugly, blurry",
+async function createPrediction(prompt: string, retries = 5): Promise<Prediction> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const res = await fetch("https://api.replicate.com/v1/models/wavespeedai/wan-2.1-t2v-480p/predictions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${REPLICATE_TOKEN}`,
+        "Content-Type": "application/json",
       },
-    }),
-  });
-  const json = await res.json();
-  if (!res.ok) throw new Error(`Replicate ${res.status}: ${JSON.stringify(json)}`);
-  return json as Prediction;
+      body: JSON.stringify({
+        input: {
+          prompt,
+          negative_prompt: "realistic photo, complex background, 3D render, watermark, text, ugly, blurry",
+        },
+      }),
+    });
+    const json = await res.json();
+    if (res.status === 429) {
+      const match = String(json.detail ?? "").match(/~?(\d+)s/);
+      const retryAfter = (match ? parseInt(match[1]) : 10) + 2;
+      console.log(`[animation] Rate limited, retrying in ${retryAfter}s (attempt ${attempt + 1})`);
+      await new Promise((r) => setTimeout(r, retryAfter * 1000));
+      continue;
+    }
+    if (!res.ok) throw new Error(`Replicate ${res.status}: ${JSON.stringify(json)}`);
+    return json as Prediction;
+  }
+  throw new Error("Replicate rate limit: 최대 재시도 횟수 초과");
 }
 
 async function getPrediction(id: string): Promise<Prediction> {
@@ -59,24 +69,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "장면 정보가 필요합니다" }, { status: 400 });
     }
 
-    // Test with a single prediction first to surface any API error
-    const firstScene = (scenes as Scene[])[0];
-    let testPrediction: Prediction;
-    try {
-      testPrediction = await createPrediction(buildPrompt(firstScene));
-    } catch (apiError) {
-      return NextResponse.json(
-        { error: "Replicate API 오류", detail: String(apiError) },
-        { status: 500 }
-      );
+    // Create predictions sequentially with retry to avoid rate limits
+    const predictionIds: string[] = [];
+    for (const scene of scenes as Scene[]) {
+      const prediction = await createPrediction(buildPrompt(scene));
+      predictionIds.push(prediction.id);
+      // Small gap between requests
+      await new Promise((r) => setTimeout(r, 1000));
     }
-
-    // If first one succeeded, create the rest in parallel
-    const restPredictions = await Promise.all(
-      (scenes as Scene[]).slice(1).map((scene) => createPrediction(buildPrompt(scene)))
-    );
-
-    const predictionIds = [testPrediction, ...restPredictions].map((p) => p.id);
     console.log("[animation] Created predictions:", predictionIds);
     return NextResponse.json({ predictionIds });
   } catch (error) {
