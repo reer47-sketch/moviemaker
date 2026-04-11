@@ -30,7 +30,8 @@ export async function POST(req: NextRequest) {
   "scenes": [
     {
       "title": "장면 제목",
-      "content": "이 장면의 나레이션 내용"
+      "content": "이 장면의 나레이션 내용",
+      "imagePrompt": "A detailed DALL-E 3 image generation prompt in English for this scene. Photorealistic, cinematic. Describe specific subjects, environment, lighting, camera angle, mood. No text or watermarks. 16:9 composition."
     }
   ]
 }
@@ -41,7 +42,8 @@ export async function POST(req: NextRequest) {
 - 각 장면은 명확한 주제를 가짐
 - 한국어로 작성
 - 흥미롭고 시청자를 사로잡는 내용
-- keyPhrase: 영상 썸네일이나 인트로에 쓸 수 있는 가장 강렬한 핵심 문구 (15자 이내)`,
+- keyPhrase: 영상 썸네일이나 인트로에 쓸 수 있는 가장 강렬한 핵심 문구 (15자 이내)
+- imagePrompt: 각 장면을 시각적으로 표현하는 영어 DALL-E 3 프롬프트. 구체적인 피사체, 배경, 조명, 카메라 앵글, 분위기를 묘사. 사진처럼 사실적이고 영화적인 구도`,
         },
       ],
     });
@@ -57,7 +59,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       keyPhrase: result.keyPhrase ?? "",
       script: result.script,
-      scenes: result.scenes,
+      scenes: result.scenes.map((s: { title: string; content: string; imagePrompt?: string }) => ({
+        title: s.title,
+        content: s.content,
+        imagePrompt: s.imagePrompt ?? "",
+      })),
     });
   } catch (error) {
     console.error("Script generation error:", error);

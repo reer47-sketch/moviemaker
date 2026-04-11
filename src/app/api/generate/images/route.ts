@@ -4,14 +4,14 @@ import { createServiceClient } from "@/lib/supabase";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-type Scene = { title: string; content: string };
+type Scene = { title: string; content: string; imagePrompt?: string };
 
 async function generateAndUploadImage(scene: Scene): Promise<string> {
   const supabase = createServiceClient();
 
-  const response = await openai.images.generate({
-    model: "dall-e-3",
-    prompt: `A real photograph for a YouTube video scene.
+  const prompt = scene.imagePrompt?.trim()
+    ? scene.imagePrompt
+    : `A real photograph for a YouTube video scene.
 Scene: "${scene.title}" — ${scene.content}
 
 Requirements:
@@ -19,10 +19,14 @@ Requirements:
 - Real people, real places, real objects (no CGI, no illustrations, no artwork)
 - Natural lighting, documentary or editorial photography style
 - No text, no captions, no watermarks
-- 16:9 widescreen composition`,
+- 16:9 widescreen composition`;
+
+  const response = await openai.images.generate({
+    model: "dall-e-3",
+    prompt,
     n: 1,
     size: "1792x1024",
-    quality: "standard",
+    quality: "hd",
   });
 
   const imageUrl = response.data?.[0]?.url;

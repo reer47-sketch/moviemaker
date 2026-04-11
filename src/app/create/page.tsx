@@ -21,7 +21,7 @@ import { createBrowserClient } from "@/lib/supabase";
 export type VideoProject = {
   topic: string;
   script: string;
-  scenes: { title: string; content: string }[];
+  scenes: { title: string; content: string; imagePrompt?: string }[];
   audioUrl: string;
   imageUrls: string[];
   videoUrl: string;
