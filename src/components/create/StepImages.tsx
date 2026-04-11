@@ -239,7 +239,7 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
                   {animLoading ? (
                     <><Loader2 className="w-4 h-4 animate-spin" /> 애니메이션 생성 중 ({scenes.length}개)...</>
                   ) : (
-                    <><Zap className="w-4 h-4" /> 졸라맨 애니메이션 삽입</>
+                    <><Zap className="w-4 h-4" /> 스틱맨 애니메이션 삽입</>
                   )}
                 </Button>
                 {animError && (
