@@ -59,11 +59,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "장면 정보가 필요합니다" }, { status: 400 });
     }
 
-    const predictions = await Promise.all(
-      (scenes as Scene[]).map((scene) => createPrediction(buildPrompt(scene)))
+    // Test with a single prediction first to surface any API error
+    const firstScene = (scenes as Scene[])[0];
+    let testPrediction: Prediction;
+    try {
+      testPrediction = await createPrediction(buildPrompt(firstScene));
+    } catch (apiError) {
+      return NextResponse.json(
+        { error: "Replicate API 오류", detail: String(apiError) },
+        { status: 500 }
+      );
+    }
+
+    // If first one succeeded, create the rest in parallel
+    const restPredictions = await Promise.all(
+      (scenes as Scene[]).slice(1).map((scene) => createPrediction(buildPrompt(scene)))
     );
 
-    const predictionIds = predictions.map((p) => p.id);
+    const predictionIds = [testPrediction, ...restPredictions].map((p) => p.id);
     console.log("[animation] Created predictions:", predictionIds);
     return NextResponse.json({ predictionIds });
   } catch (error) {
