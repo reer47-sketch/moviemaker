@@ -34,7 +34,8 @@ async function generateClip(scene: Scene): Promise<string> {
   );
 
   // output is a URL string or array
-  const url = Array.isArray(output) ? (output[0] as string) : (output as string);
+  const raw = output as unknown;
+  const url = Array.isArray(raw) ? String(raw[0]) : String(raw);
   if (!url) throw new Error("No output from Replicate");
 
   // Download clip and re-upload to Supabase for permanent storage
