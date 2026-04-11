@@ -212,14 +212,27 @@ async function buildHighlightIntro({
 
   let cmd: string;
 
+  // Check if music file actually exists (user may not have added MP3s yet)
+  let useMusicFile = false;
+  let musicFileFwd = "";
   if (introMusicId) {
-    const musicFile = path.join(process.cwd(), "public", "music", `${introMusicId}.mp3`).replace(/\\/g, "/");
+    const musicAbsPath = path.join(process.cwd(), "public", "music", `${introMusicId}.mp3`);
+    try {
+      await fs.access(musicAbsPath);
+      musicFileFwd = musicAbsPath.replace(/\\/g, "/");
+      useMusicFile = true;
+    } catch {
+      console.warn(`[render] Music file not found: ${musicAbsPath}, using silence`);
+    }
+  }
+
+  if (useMusicFile) {
     cmd =
-      `${FFMPEG} -ss ${startSec.toFixed(3)} -t ${INTRO_DURATION} -i "${mainFwd}" -i "${musicFile}"` +
+      `${FFMPEG} -ss ${startSec.toFixed(3)} -t ${INTRO_DURATION} -i "${mainFwd}" -i "${musicFileFwd}"` +
       ` -filter_complex "[0:v]${vf}[v];[1:a]atrim=0:${INTRO_DURATION},asetpts=PTS-STARTPTS,afade=t=out:st=${INTRO_DURATION - 2}:d=2[a]"` +
       ` -map "[v]" -map "[a]" -c:v libx264 -c:a aac -pix_fmt yuv420p "${introFwd}" -y`;
   } else {
-    // Silent audio via lavfi
+    // Silent audio via lavfi (no music file or file not found)
     cmd =
       `${FFMPEG} -ss ${startSec.toFixed(3)} -t ${INTRO_DURATION} -i "${mainFwd}" -f lavfi -i anullsrc=r=44100:cl=stereo` +
       ` -filter_complex "[0:v]${vf}[v];[1:a]atrim=0:${INTRO_DURATION}[a]"` +

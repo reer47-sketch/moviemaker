@@ -38,6 +38,7 @@ export function StepRender({ project, updateProject, onNext, onPrev, onSave }: P
   const [videoUrl, setVideoUrl] = useState(project.videoUrl ?? "");
   const [done, setDone] = useState(!!project.videoUrl);
 
+  const [errorMsg, setErrorMsg] = useState("");
   const [addHighlightIntro, setAddHighlightIntro] = useState(
     project.addHighlightIntro ?? !!project.keyPhrase
   );
@@ -76,6 +77,10 @@ export function StepRender({ project, updateProject, onNext, onPrev, onSave }: P
         }),
       });
       const data = await res.json();
+      if (!res.ok) {
+        setErrorMsg(data.error ?? "영상 렌더링에 실패했습니다");
+        return;
+      }
       setProgress(100);
       setCurrentStepMsg("완료!");
       setVideoUrl(data.videoUrl);
@@ -83,6 +88,7 @@ export function StepRender({ project, updateProject, onNext, onPrev, onSave }: P
       setDone(true);
     } catch (e) {
       console.error(e);
+      setErrorMsg("네트워크 오류가 발생했습니다");
     } finally {
       setLoading(false);
     }
@@ -193,6 +199,12 @@ export function StepRender({ project, updateProject, onNext, onPrev, onSave }: P
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {errorMsg && (
+          <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-4 py-3">
+            {errorMsg}
           </div>
         )}
 
