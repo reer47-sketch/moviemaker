@@ -14,41 +14,42 @@ export const maxDuration = 300;
 
 type SubtitleEntry = { start: number; end: number; text: string };
 
-function mapScriptToSegments(
+function splitIntoSentences(script: string): string[] {
+  // Split on sentence-ending punctuation followed by whitespace or end-of-string
+  return script
+    .split(/(?<=[.!?])\s+|(?<=[.!?])$/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+function mapScriptToSentences(
   script: string,
   whisperSegs: { start: number; end: number }[]
 ): SubtitleEntry[] {
   if (!whisperSegs.length) return [];
 
-  const words = script.split(/\s+/).filter(Boolean);
-  if (!words.length) return [];
+  const sentences = splitIntoSentences(script);
+  if (!sentences.length) return [];
 
-  const totalDuration =
-    whisperSegs[whisperSegs.length - 1].end - whisperSegs[0].start;
+  const audioStart = whisperSegs[0].start;
+  const audioEnd = whisperSegs[whisperSegs.length - 1].end;
+  const totalDuration = audioEnd - audioStart;
 
-  const result: SubtitleEntry[] = [];
-  let wordIdx = 0;
+  // Use character count proportion to assign timestamps
+  const totalChars = script.replace(/\s+/g, "").length;
+  let charAccum = 0;
 
-  for (let i = 0; i < whisperSegs.length; i++) {
-    const seg = whisperSegs[i];
-    const segDuration = seg.end - seg.start;
-    const isLast = i === whisperSegs.length - 1;
-
-    const wordsForSeg = isLast
-      ? words.length - wordIdx
-      : Math.max(1, Math.round(words.length * (segDuration / totalDuration)));
-
-    const chunk = words.slice(wordIdx, wordIdx + wordsForSeg).join(" ");
-    wordIdx += wordsForSeg;
-
-    if (chunk) result.push({ start: seg.start, end: seg.end, text: chunk });
-  }
-
-  if (wordIdx < words.length && result.length > 0) {
-    result[result.length - 1].text += " " + words.slice(wordIdx).join(" ");
-  }
-
-  return result;
+  return sentences.map((sentence) => {
+    const sentenceChars = sentence.replace(/\s+/g, "").length;
+    const start = audioStart + (charAccum / totalChars) * totalDuration;
+    charAccum += sentenceChars;
+    const end = audioStart + (charAccum / totalChars) * totalDuration;
+    return {
+      start: Math.round(start * 1000) / 1000,
+      end: Math.round(end * 1000) / 1000,
+      text: sentence,
+    };
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -88,7 +89,7 @@ export async function POST(req: NextRequest) {
     }
 
     const subtitles: SubtitleEntry[] = script
-      ? mapScriptToSegments(script, whisperSegs)
+      ? mapScriptToSentences(script, whisperSegs)
       : whisperSegs.map((s, i) => ({
           ...s,
           text: (transcription.segments ?? [])[i]?.text?.trim() ?? "",
