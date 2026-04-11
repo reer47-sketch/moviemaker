@@ -1,10 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
-import Replicate from "replicate";
 import { createServiceClient } from "@/lib/supabase";
 
 export const maxDuration = 60;
 
-const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
+const REPLICATE_TOKEN = process.env.REPLICATE_API_TOKEN ?? "";
+
+type Prediction = { id: string; status: string; output: unknown; error?: string };
+
+async function createPrediction(prompt: string): Promise<Prediction> {
+  const res = await fetch("https://api.replicate.com/v1/models/wavespeedai/wan-2.1-t2v-480p/predictions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${REPLICATE_TOKEN}`,
+      "Content-Type": "application/json",
+      "Prefer": "respond-async",
+    },
+    body: JSON.stringify({
+      input: {
+        prompt,
+        negative_prompt: "realistic photo, complex background, 3D render, watermark, text, ugly, blurry",
+      },
+    }),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(`Replicate ${res.status}: ${JSON.stringify(json)}`);
+  return json as Prediction;
+}
+
+async function getPrediction(id: string): Promise<Prediction> {
+  const res = await fetch(`https://api.replicate.com/v1/predictions/${id}`, {
+    headers: { Authorization: `Bearer ${REPLICATE_TOKEN}` },
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(`Replicate ${res.status}: ${JSON.stringify(json)}`);
+  return json as Prediction;
+}
 
 type Scene = { title: string; content: string };
 
@@ -20,11 +50,8 @@ function buildPrompt(scene: Scene): string {
 // POST /api/generate/animation
 // body: { scenes } → returns { predictionIds: string[] }
 export async function POST(req: NextRequest) {
-  if (!process.env.REPLICATE_API_TOKEN) {
-    return NextResponse.json(
-      { error: "REPLICATE_API_TOKEN이 설정되지 않았습니다" },
-      { status: 500 }
-    );
+  if (!REPLICATE_TOKEN) {
+    return NextResponse.json({ error: "REPLICATE_API_TOKEN이 설정되지 않았습니다" }, { status: 500 });
   }
 
   try {
@@ -33,18 +60,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "장면 정보가 필요합니다" }, { status: 400 });
     }
 
-    // Create predictions in parallel — return IDs immediately without waiting
     const predictions = await Promise.all(
-      (scenes as Scene[]).map((scene) =>
-        replicate.predictions.create({
-          model: "wavespeedai/wan-2.1-t2v-480p",
-          input: {
-            prompt: buildPrompt(scene),
-            negative_prompt:
-              "realistic photo, complex background, 3D render, watermark, text, ugly, blurry",
-          },
-        })
-      )
+      (scenes as Scene[]).map((scene) => createPrediction(buildPrompt(scene)))
     );
 
     const predictionIds = predictions.map((p) => p.id);
@@ -60,9 +77,8 @@ export async function POST(req: NextRequest) {
 }
 
 // GET /api/generate/animation?ids=id1,id2,...
-// Checks status of all predictions; if all done, uploads and returns URLs
 export async function GET(req: NextRequest) {
-  if (!process.env.REPLICATE_API_TOKEN) {
+  if (!REPLICATE_TOKEN) {
     return NextResponse.json({ error: "REPLICATE_API_TOKEN이 설정되지 않았습니다" }, { status: 500 });
   }
 
@@ -72,29 +88,32 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const predictions = await Promise.all(ids.map((id) => replicate.predictions.get(id)));
+    const predictions = await Promise.all(ids.map((id) => getPrediction(id)));
 
-    const statuses = predictions.map((p) => p.status);
-    const allDone = statuses.every((s) => s === "succeeded" || s === "failed");
-    const anyFailed = statuses.some((s) => s === "failed");
+    const allDone = predictions.every((p) => p.status === "succeeded" || p.status === "failed");
+    const anyFailed = predictions.some((p) => p.status === "failed");
 
     if (!allDone) {
-      return NextResponse.json({ status: "processing", statuses });
+      return NextResponse.json({ status: "processing", statuses: predictions.map((p) => p.status) });
     }
 
     if (anyFailed) {
-      return NextResponse.json({ error: "일부 애니메이션 생성에 실패했습니다" }, { status: 500 });
+      const errs = predictions.filter((p) => p.status === "failed").map((p) => p.error);
+      return NextResponse.json(
+        { error: "일부 애니메이션 생성에 실패했습니다", detail: JSON.stringify(errs) },
+        { status: 500 }
+      );
     }
 
     // All succeeded — upload to Supabase
     const supabase = createServiceClient();
     const animationUrls = await Promise.all(
       predictions.map(async (p) => {
-        const raw = p.output as unknown;
+        const raw = p.output;
         const url = Array.isArray(raw) ? String(raw[0]) : String(raw);
 
         const videoRes = await fetch(url);
-        if (!videoRes.ok) throw new Error(`Failed to download clip: ${videoRes.status}`);
+        if (!videoRes.ok) throw new Error(`클립 다운로드 실패: ${videoRes.status}`);
         const videoBuffer = await videoRes.arrayBuffer();
 
         const fileName = `animations/${Date.now()}-${Math.random().toString(36).slice(2)}.mp4`;
