@@ -69,14 +69,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "장면 정보가 필요합니다" }, { status: 400 });
     }
 
-    // Generate clips sequentially (Replicate rate limit)
-    const animationUrls: string[] = [];
-    for (const scene of scenes as Scene[]) {
-      console.log("[animation] Generating clip for scene:", scene.title);
-      const url = await generateClip(scene);
-      animationUrls.push(url);
-      console.log("[animation] Clip done:", url);
-    }
+    // Generate clips in parallel
+    console.log("[animation] Generating", scenes.length, "clips in parallel");
+    const animationUrls = await Promise.all(
+      (scenes as Scene[]).map(async (scene) => {
+        console.log("[animation] Starting clip for scene:", scene.title);
+        const url = await generateClip(scene);
+        console.log("[animation] Clip done:", scene.title);
+        return url;
+      })
+    );
 
     return NextResponse.json({ animationUrls });
   } catch (error) {
