@@ -40,12 +40,14 @@ export function StepSubtitles({ project, updateProject, onNext, onPrev, onSave }
   const [selectedStyle, setSelectedStyle] = useState("white");
   const [fontSize, setFontSize] = useState(24);
   const [fontName, setFontName] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
   const [subtitledVideoUrl, setSubtitledVideoUrl] = useState(
     project.subtitledVideoUrl ?? ""
   );
 
   const generateSubtitles = async () => {
     setLoading(true);
+    setErrorMsg("");
     try {
       const res = await fetch("/api/generate/subtitles", {
         method: "POST",
@@ -60,11 +62,16 @@ export function StepSubtitles({ project, updateProject, onNext, onPrev, onSave }
         }),
       });
       const data = await res.json();
+      if (!res.ok) {
+        setErrorMsg(data.error ?? "자막 생성에 실패했습니다");
+        return;
+      }
       setSubtitles(data.subtitles ?? []);
       setSubtitledVideoUrl(data.subtitledVideoUrl);
       updateProject({ subtitledVideoUrl: data.subtitledVideoUrl });
     } catch (e) {
       console.error(e);
+      setErrorMsg("네트워크 오류가 발생했습니다");
     } finally {
       setLoading(false);
     }
@@ -166,6 +173,12 @@ export function StepSubtitles({ project, updateProject, onNext, onPrev, onSave }
             <><Type className="w-4 h-4" /> 자막 생성하기</>
           )}
         </Button>
+
+        {errorMsg && (
+          <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-4 py-3">
+            {errorMsg}
+          </div>
+        )}
 
         {/* Result */}
         {subtitles.length > 0 && (

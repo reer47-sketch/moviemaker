@@ -6,9 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Sparkles, Loader2, ChevronRight, RefreshCw, FileText,
-  Pencil, Check, Store, PawPrint, Package, PenLine, Save,
+  Pencil, Check, Store, PawPrint, Package, PenLine, Save, Zap,
 } from "lucide-react";
 import type { VideoProject } from "@/app/create/page";
+import { DURATION_OPTIONS } from "@/lib/introMusic";
 
 type Props = {
   project: Partial<VideoProject>;
@@ -82,17 +83,14 @@ const TEMPLATES: Template[] = [
 
 type Scene = { title: string; content: string };
 
-/** 입력된 필드만 모아 Claude에게 보낼 프롬프트 문자열 생성 */
 function buildPrompt(template: Template, fields: Record<string, string>): string {
   const lines = template.fields
     .filter((f) => fields[f.key]?.trim())
     .map((f) => `${f.label}: ${fields[f.key].trim()}`);
-
   if (!lines.length) return `${template.label} 영상`;
   return `${template.label} 영상\n\n${lines.join("\n")}`;
 }
 
-/** 대시보드/저장용 짧은 주제 문자열 */
 function buildTopic(template: Template | null, fields: Record<string, string>, freeTopic: string): string {
   if (!template) return freeTopic;
   const name = fields["name"]?.trim();
@@ -102,19 +100,20 @@ function buildTopic(template: Template | null, fields: Record<string, string>, f
 export function StepScript({ project, updateProject, onNext, onSave }: Props) {
   const [justSaved, setJustSaved] = useState(false);
   const handleSave = () => { onSave(); setJustSaved(true); setTimeout(() => setJustSaved(false), 2000); };
+
+  const [duration, setDuration] = useState(project.duration ?? "short");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [fields, setFields] = useState<Record<string, string>>({});
   const [freeTopic, setFreeTopic] = useState(project.topic ?? "");
   const [loading, setLoading] = useState(false);
   const [script, setScript] = useState(project.script ?? "");
   const [scenes, setScenes] = useState<Scene[]>(project.scenes ?? []);
+  const [keyPhrase, setKeyPhrase] = useState(project.keyPhrase ?? "");
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [editBuf, setEditBuf] = useState<Scene>({ title: "", content: "" });
 
   const selectedTemplate = TEMPLATES.find((t) => t.id === selectedId) ?? null;
-
-  const setField = (key: string, value: string) =>
-    setFields((prev) => ({ ...prev, [key]: value }));
+  const setField = (key: string, value: string) => setFields((prev) => ({ ...prev, [key]: value }));
 
   const canGenerate = selectedTemplate
     ? selectedTemplate.fields.some((f) => fields[f.key]?.trim())
@@ -130,12 +129,13 @@ export function StepScript({ project, updateProject, onNext, onSave }: Props) {
       const res = await fetch("/api/generate/script", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic: prompt }),
+        body: JSON.stringify({ topic: prompt, duration }),
       });
       const data = await res.json();
       setScript(data.script);
       setScenes(data.scenes);
-      updateProject({ topic, script: data.script, scenes: data.scenes });
+      setKeyPhrase(data.keyPhrase ?? "");
+      updateProject({ topic, script: data.script, scenes: data.scenes, keyPhrase: data.keyPhrase ?? "", duration });
     } catch (e) {
       console.error(e);
     } finally {
@@ -170,6 +170,32 @@ export function StepScript({ project, updateProject, onNext, onSave }: Props) {
       </CardHeader>
       <CardContent className="space-y-5">
 
+        {/* Duration selector */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium">영상 길이</label>
+          <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+            {DURATION_OPTIONS.map((d) => {
+              const active = duration === d.id;
+              return (
+                <button
+                  key={d.id}
+                  onClick={() => setDuration(d.id)}
+                  className={`p-2.5 rounded-xl border text-center transition-all
+                    ${active
+                      ? "bg-primary/10 border-primary/50 text-primary"
+                      : "bg-muted/30 border-border/40 text-muted-foreground hover:border-border hover:text-foreground"}`}
+                >
+                  <div className="flex items-center justify-center gap-1 mb-0.5">
+                    {d.id === "short" && <Zap className="w-3 h-3" />}
+                    <span className="text-sm font-bold">{d.label}</span>
+                  </div>
+                  <div className="text-xs opacity-70">{d.sub}</div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Template buttons */}
         <div className="space-y-2">
           <label className="text-sm font-medium">빠른 템플릿</label>
@@ -179,10 +205,7 @@ export function StepScript({ project, updateProject, onNext, onSave }: Props) {
               return (
                 <button
                   key={t.id}
-                  onClick={() => {
-                    setSelectedId(active ? null : t.id);
-                    setFields({});
-                  }}
+                  onClick={() => { setSelectedId(active ? null : t.id); setFields({}); }}
                   className={`p-3 rounded-xl border text-left transition-all hover:scale-[1.02]
                     ${active ? t.activeBg : `bg-muted/30 ${t.border} hover:bg-muted/50`}`}
                 >
@@ -191,7 +214,6 @@ export function StepScript({ project, updateProject, onNext, onSave }: Props) {
                 </button>
               );
             })}
-            {/* 직접 입력 */}
             <button
               onClick={() => { setSelectedId(null); setFields({}); }}
               className={`p-3 rounded-xl border text-left transition-all hover:scale-[1.02]
@@ -241,7 +263,6 @@ export function StepScript({ project, updateProject, onNext, onSave }: Props) {
             </div>
           </div>
         ) : (
-          /* Free text input */
           <div className="space-y-2">
             <label className="text-sm font-medium">영상 주제</label>
             <input
@@ -263,6 +284,17 @@ export function StepScript({ project, updateProject, onNext, onSave }: Props) {
             <><Sparkles className="w-4 h-4" /> {script ? "스크립트 재생성" : "스크립트 생성하기"}</>
           )}
         </Button>
+
+        {/* Key phrase highlight */}
+        {keyPhrase && (
+          <div className="p-3 rounded-xl bg-primary/5 border border-primary/20 flex items-start gap-2.5">
+            <Zap className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <div className="text-xs font-medium text-primary mb-0.5">핵심 문구 (인트로 오버레이)</div>
+              <div className="text-sm font-semibold truncate">{keyPhrase}</div>
+            </div>
+          </div>
+        )}
 
         {/* Script result */}
         {scenes.length > 0 && (
@@ -327,7 +359,17 @@ export function StepScript({ project, updateProject, onNext, onSave }: Props) {
             <Save className="w-3.5 h-3.5" />
             {justSaved ? "저장됨 ✓" : "임시 저장"}
           </Button>
-          <Button onClick={() => { updateProject({ topic: buildTopic(selectedTemplate, fields, freeTopic), script, scenes }); onNext(); }} disabled={!script} className="gap-2">
+          <Button
+            onClick={() => {
+              updateProject({
+                topic: buildTopic(selectedTemplate, fields, freeTopic),
+                script, scenes, keyPhrase, duration,
+              });
+              onNext();
+            }}
+            disabled={!script}
+            className="gap-2"
+          >
             다음: 음성 생성
             <ChevronRight className="w-4 h-4" />
           </Button>

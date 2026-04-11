@@ -1,12 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Clapperboard, Loader2, ChevronRight, ChevronLeft, CheckCircle, Film, Save } from "lucide-react";
+import {
+  Clapperboard, Loader2, ChevronRight, ChevronLeft,
+  CheckCircle, Save, Zap, Music,
+} from "lucide-react";
 import type { VideoProject } from "@/app/create/page";
+import { INTRO_MUSIC_OPTIONS } from "@/lib/introMusic";
 
 type Props = {
   project: Partial<VideoProject>;
@@ -34,6 +38,13 @@ export function StepRender({ project, updateProject, onNext, onPrev, onSave }: P
   const [videoUrl, setVideoUrl] = useState(project.videoUrl ?? "");
   const [done, setDone] = useState(!!project.videoUrl);
 
+  const [addHighlightIntro, setAddHighlightIntro] = useState(
+    project.addHighlightIntro ?? !!project.keyPhrase
+  );
+  const [introMusicId, setIntroMusicId] = useState(
+    project.introMusicId ?? "upbeat"
+  );
+
   const startRender = async () => {
     setLoading(true);
     setProgress(0);
@@ -42,8 +53,12 @@ export function StepRender({ project, updateProject, onNext, onPrev, onSave }: P
     // Simulate progress
     for (let i = 0; i < RENDER_STEPS.length; i++) {
       setCurrentStepMsg(RENDER_STEPS[i]);
-      setProgress(Math.round(((i + 1) / RENDER_STEPS.length) * 90));
+      setProgress(Math.round(((i + 1) / RENDER_STEPS.length) * 85));
       await new Promise((r) => setTimeout(r, 1200));
+    }
+
+    if (addHighlightIntro && project.keyPhrase) {
+      setCurrentStepMsg("하이라이트 인트로 생성 중...");
     }
 
     try {
@@ -55,13 +70,16 @@ export function StepRender({ project, updateProject, onNext, onPrev, onSave }: P
           scenes: project.scenes,
           audioUrl: project.audioUrl,
           imageUrls: project.imageUrls,
+          keyPhrase: addHighlightIntro ? (project.keyPhrase ?? "") : "",
+          introMusicId: addHighlightIntro ? introMusicId : "",
+          addHighlightIntro,
         }),
       });
       const data = await res.json();
       setProgress(100);
       setCurrentStepMsg("완료!");
       setVideoUrl(data.videoUrl);
-      updateProject({ videoUrl: data.videoUrl });
+      updateProject({ videoUrl: data.videoUrl, addHighlightIntro, introMusicId });
       setDone(true);
     } catch (e) {
       console.error(e);
@@ -71,7 +89,7 @@ export function StepRender({ project, updateProject, onNext, onPrev, onSave }: P
   };
 
   const handleNext = () => {
-    updateProject({ videoUrl });
+    updateProject({ videoUrl, addHighlightIntro, introMusicId });
     onNext();
   };
 
@@ -105,6 +123,78 @@ export function StepRender({ project, updateProject, onNext, onPrev, onSave }: P
             </div>
           ))}
         </div>
+
+        {/* Highlight Intro Settings */}
+        {project.keyPhrase && (
+          <div className="rounded-xl border border-border/50 bg-muted/30 overflow-hidden">
+            <button
+              className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
+              onClick={() => setAddHighlightIntro((v) => !v)}
+              disabled={loading}
+            >
+              <div className="flex items-center gap-3 text-left">
+                <div className={`p-1.5 rounded-lg ${addHighlightIntro ? "bg-primary/10" : "bg-muted"}`}>
+                  <Zap className={`w-4 h-4 ${addHighlightIntro ? "text-primary" : "text-muted-foreground"}`} />
+                </div>
+                <div>
+                  <div className="text-sm font-medium">하이라이트 인트로</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">핵심 장면을 영상 앞에 미리 보여줍니다</div>
+                </div>
+              </div>
+              <div className={`w-10 h-5.5 rounded-full transition-colors relative flex-shrink-0 ${addHighlightIntro ? "bg-primary" : "bg-muted-foreground/30"}`}
+                style={{ width: 40, height: 22 }}>
+                <div className={`absolute top-0.5 w-4.5 h-4.5 rounded-full bg-white shadow transition-all ${addHighlightIntro ? "left-[18px]" : "left-[2px]"}`}
+                  style={{ width: 18, height: 18, left: addHighlightIntro ? 20 : 2 }} />
+              </div>
+            </button>
+
+            {addHighlightIntro && (
+              <div className="px-4 pb-4 space-y-3 border-t border-border/30">
+                {/* Key phrase preview */}
+                <div className="pt-3 flex items-center gap-2 px-3 py-2.5 rounded-lg bg-primary/5 border border-primary/20">
+                  <Zap className="w-3.5 h-3.5 text-primary shrink-0" />
+                  <span className="text-sm font-semibold truncate">{project.keyPhrase}</span>
+                </div>
+
+                {/* Intro music selector */}
+                <div>
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <Music className="w-3.5 h-3.5 text-muted-foreground" />
+                    <span className="text-xs font-medium text-muted-foreground">인트로 음악</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <button
+                      onClick={() => setIntroMusicId("")}
+                      disabled={loading}
+                      className={`p-2 rounded-lg border text-xs transition-colors ${
+                        introMusicId === ""
+                          ? "border-primary bg-primary/10 text-primary font-medium"
+                          : "border-border/50 hover:border-border"
+                      }`}
+                    >
+                      없음
+                    </button>
+                    {INTRO_MUSIC_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.id}
+                        onClick={() => setIntroMusicId(opt.id)}
+                        disabled={loading}
+                        className={`p-2 rounded-lg border text-xs transition-colors ${
+                          introMusicId === opt.id
+                            ? "border-primary bg-primary/10 text-primary font-medium"
+                            : "border-border/50 hover:border-border"
+                        }`}
+                      >
+                        <div>{opt.emoji}</div>
+                        <div className="mt-0.5 leading-tight">{opt.label}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Render Button */}
         {!loading && !done && (

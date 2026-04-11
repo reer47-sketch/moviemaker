@@ -26,6 +26,11 @@ export type VideoProject = {
   imageUrls: string[];
   videoUrl: string;
   subtitledVideoUrl: string;
+  // New fields
+  duration: string;          // "short" | "2min" | "3min" | "5min" | "10min"
+  keyPhrase: string;         // Most engaging phrase from script (for highlight intro)
+  introMusicId: string;      // "" = no music, else intro music option id
+  addHighlightIntro: boolean; // Prepend a silent highlight clip with keyPhrase
 };
 
 const STEPS = [
