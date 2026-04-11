@@ -98,7 +98,7 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
         body: JSON.stringify({ scenes: project.scenes }),
       });
       const data = await res.json();
-      if (!res.ok) { setAnimError(data.error ?? "애니메이션 생성 실패"); return; }
+      if (!res.ok) { setAnimError((data.error ?? "애니메이션 생성 실패") + (data.detail ? ` (${data.detail})` : "")); return; }
 
       const ids: string[] = data.predictionIds;
 
@@ -111,6 +111,9 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
         if (!pollRes.ok) { setAnimError(pollData.error ?? "애니메이션 상태 확인 실패"); return; }
         if (pollData.status === "succeeded") {
           animationUrls = pollData.animationUrls;
+        } else if (pollData.error) {
+          setAnimError(pollData.error + (pollData.detail ? ` (${pollData.detail})` : ""));
+          return;
         }
         // status === "processing" → keep polling
       }
