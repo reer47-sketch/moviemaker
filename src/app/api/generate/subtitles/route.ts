@@ -129,7 +129,7 @@ function escapeDrawtext(t: string): string {
     .replace(/\$/g, "\\$")   // 2. dollar sign  — shell variable expansion
     .replace(/`/g, "\\`")    // 3. backtick     — shell command substitution
     .replace(/"/g, '\\"')    // 4. double quote — would close the outer "-vf "..." shell arg
-    .replace(/'/g, "\\'")    // 5. single quote — FFmpeg filter single-quote delimiter
+    .replace(/'/g, "\u2019") // 5. single quote — replace with right curly quote (can't escape inside text='...')
     .replace(/:/g, "\\:")    // 6. colon        — FFmpeg option separator
     .replace(/\{/g, "\\{")   // 7. open brace   — FFmpeg drawtext expansion
     .replace(/\}/g, "\\}");  // 8. close brace

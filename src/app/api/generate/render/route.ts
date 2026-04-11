@@ -16,7 +16,7 @@ function escapeDrawtext(t: string): string {
     .replace(/\$/g, "\\$")
     .replace(/`/g, "\\`")
     .replace(/"/g, '\\"')
-    .replace(/'/g, "\\'")
+    .replace(/'/g, "\u2019") // single quote — replace with right curly quote (can't escape inside text='...')
     .replace(/:/g, "\\:")
     .replace(/\{/g, "\\{")
     .replace(/\}/g, "\\}");
