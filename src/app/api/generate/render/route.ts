@@ -56,8 +56,8 @@ export async function POST(req: NextRequest) {
       });
     });
 
-    // Check if any slides (non-image scenes)
-    const hasSlides = scenes.some((s: { sceneType?: string }) => s.sceneType !== "image");
+    // Check if any explicitly-set slide scenes
+    const hasSlides = scenes.some((s: { sceneType?: string }) => s.sceneType === "slide");
 
     if (hasSlides) {
       try {
@@ -122,26 +122,40 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── FFmpeg fallback ──
+    // ── FFmpeg fallback / main path ──
     const sharp = (await import("sharp")).default;
     type MediaFile = { file: string; isVideo: boolean };
     const mediaFiles: MediaFile[] = [];
     const urls: string[] = imageUrls ?? [];
-    const secondsPerScene = audioDuration / Math.max(urls.length, 1);
+    const secondsPerScene = audioDuration / Math.max(scenes.length, 1);
+    const fontAbsPath = path.join(process.cwd(), "public", "fonts", "NanumGothic.ttf");
+    let hasFontFile = false;
+    try { await fs.access(fontAbsPath); hasFontFile = true; } catch {}
 
-    for (let i = 0; i < urls.length; i++) {
-      const res = await fetch(urls[i]);
-      const contentType = res.headers.get("content-type") ?? "";
-      const buf = Buffer.from(await res.arrayBuffer());
-      const isVideo = contentType.startsWith("video/") || /\.(mp4|mov|avi|webm|mkv|m4v)$/i.test(urls[i]);
-      if (isVideo) {
-        const vidFile = path.join(tmpDir, `vid-${ts}-${i}.mp4`);
-        await fs.writeFile(vidFile, buf);
-        mediaFiles.push({ file: vidFile, isVideo: true });
+    for (let i = 0; i < scenes.length; i++) {
+      const scene = scenes[i] as { title: string; content: string; sceneType?: string };
+      const isSlide = scene.sceneType === "slide";
+      const url = urls[i];
+
+      if (isSlide || !url) {
+        // Generate text slide image using FFmpeg
+        const slideFile = path.join(tmpDir, `slide-${ts}-${i}.jpg`);
+        await generateTextSlide({ scene, slideFile, fontPath: hasFontFile ? fontAbsPath : "", FFMPEG });
+        mediaFiles.push({ file: slideFile, isVideo: false });
       } else {
-        const imgFile = path.join(tmpDir, `img-${ts}-${i}.jpg`);
-        await sharp(buf).rotate().jpeg({ quality: 90 }).toFile(imgFile);
-        mediaFiles.push({ file: imgFile, isVideo: false });
+        const res = await fetch(url);
+        const contentType = res.headers.get("content-type") ?? "";
+        const buf = Buffer.from(await res.arrayBuffer());
+        const isVideo = contentType.startsWith("video/") || /\.(mp4|mov|avi|webm|mkv|m4v)$/i.test(url);
+        if (isVideo) {
+          const vidFile = path.join(tmpDir, `vid-${ts}-${i}.mp4`);
+          await fs.writeFile(vidFile, buf);
+          mediaFiles.push({ file: vidFile, isVideo: true });
+        } else {
+          const imgFile = path.join(tmpDir, `img-${ts}-${i}.jpg`);
+          await sharp(buf).rotate().jpeg({ quality: 90 }).toFile(imgFile);
+          mediaFiles.push({ file: imgFile, isVideo: false });
+        }
       }
     }
 
@@ -189,6 +203,27 @@ export async function POST(req: NextRequest) {
     console.error("Render error:", error);
     return NextResponse.json({ error: "영상 렌더링 중 오류가 발생했습니다" }, { status: 500 });
   }
+}
+
+async function generateTextSlide({ scene, slideFile, fontPath, FFMPEG }: {
+  scene: { title: string; content: string };
+  slideFile: string;
+  fontPath: string;
+  FFMPEG: string;
+}): Promise<void> {
+  const fontPart = fontPath ? `:fontfile='${fontPath.replace(/\\/g, "/")}'` : "";
+  const safeTitle = escapeDrawtext(scene.title.substring(0, 30));
+  const shortContent = scene.content.substring(0, 55).trim() + (scene.content.length > 55 ? "..." : "");
+  const safeContent = escapeDrawtext(shortContent);
+  const outFwd = slideFile.replace(/\\/g, "/");
+
+  const vf = [
+    `drawtext=text='${safeTitle}'${fontPart}:fontsize=56:fontcolor=white:x=(w-tw)/2:y=(h/2)-80`,
+    `drawtext=text='${safeContent}'${fontPart}:fontsize=28:fontcolor=0xaaaaaa:x=(w-tw)/2:y=(h/2)+40`,
+  ].join(",");
+
+  const cmd = `${FFMPEG} -f lavfi -i "color=c=0x0f172a:s=1280x720:r=25" -vf "${vf}" -vframes 1 "${outFwd}" -y`;
+  await execAsync(cmd, { timeout: 30000, maxBuffer: 10 * 1024 * 1024 });
 }
 
 async function applyIntro({ mainVideoFile, audioDuration, keyPhrase, introMusicId, addHighlightIntro, FFMPEG, ts, tmpDir }: {
