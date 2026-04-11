@@ -87,7 +87,7 @@ export function StepRender({ project, updateProject, onNext, onPrev, onSave }: P
         : "완료!";
       setCurrentStepMsg(introMsg);
       setVideoUrl(data.videoUrl);
-      updateProject({ videoUrl: data.videoUrl, addHighlightIntro, introMusicId });
+      updateProject({ videoUrl: data.videoUrl, addHighlightIntro, introMusicId, introAdded: data.introAdded ?? false });
       setDone(true);
     } catch (e) {
       console.error(e);

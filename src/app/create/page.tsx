@@ -31,6 +31,7 @@ export type VideoProject = {
   keyPhrase: string;         // Most engaging phrase from script (for highlight intro)
   introMusicId: string;      // "" = no music, else intro music option id
   addHighlightIntro: boolean; // Prepend a silent highlight clip with keyPhrase
+  introAdded: boolean;       // Whether intro was actually prepended in the rendered video
 };
 
 const STEPS = [

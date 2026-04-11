@@ -53,7 +53,7 @@ function mapScriptToSegments(
 
 export async function POST(req: NextRequest) {
   try {
-    const { audioUrl, videoUrl, script, style, fontSize, fontName } =
+    const { audioUrl, videoUrl, script, style, fontSize, fontName, introOffset = 0 } =
       await req.json();
 
     if (!audioUrl || !videoUrl) {
@@ -94,13 +94,18 @@ export async function POST(req: NextRequest) {
           text: (transcription.segments ?? [])[i]?.text?.trim() ?? "",
         }));
 
-    const subtitledVideoUrl = await burnSubtitles(videoUrl, subtitles, {
+    // Offset timestamps when intro was prepended to the video
+    const finalSubtitles = introOffset > 0
+      ? subtitles.map(s => ({ ...s, start: s.start + introOffset, end: s.end + introOffset }))
+      : subtitles;
+
+    const subtitledVideoUrl = await burnSubtitles(videoUrl, finalSubtitles, {
       style: style ?? "white",
       fontSize: fontSize ?? 24,
       fontName: fontName ?? "",
     });
 
-    return NextResponse.json({ subtitles, subtitledVideoUrl });
+    return NextResponse.json({ subtitles: finalSubtitles, subtitledVideoUrl });
   } catch (error) {
     console.error("Subtitle generation error:", error);
     return NextResponse.json(

@@ -59,6 +59,7 @@ export function StepSubtitles({ project, updateProject, onNext, onPrev, onSave }
           style: selectedStyle,
           fontSize,
           fontName,
+          introOffset: project.introAdded ? 6 : 0,
         }),
       });
       const data = await res.json();
