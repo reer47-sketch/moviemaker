@@ -4,21 +4,26 @@ import { DURATION_OPTIONS } from "@/lib/introMusic";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-/** Fix unescaped control characters inside JSON string values */
+/** Fix unescaped control characters and Unicode line terminators inside JSON strings */
 function sanitizeJson(text: string): string {
   let result = "";
   let inString = false;
   let escape = false;
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
+    const code = text.charCodeAt(i);
     if (escape) { result += ch; escape = false; continue; }
     if (ch === "\\") { result += ch; escape = true; continue; }
     if (ch === '"') { inString = !inString; result += ch; continue; }
-    if (inString && (ch === "\n" || ch === "\r" || ch === "\t")) {
-      result += ch === "\n" ? "\\n" : ch === "\r" ? "\\r" : "\\t";
-    } else {
-      result += ch;
+    if (inString) {
+      if (ch === "\n") { result += "\\n"; continue; }
+      if (ch === "\r") { result += "\\r"; continue; }
+      if (ch === "\t") { result += "\\t"; continue; }
+      // Unicode line/paragraph separators also break JSON
+      if (code === 0x2028) { result += "\\u2028"; continue; }
+      if (code === 0x2029) { result += "\\u2029"; continue; }
     }
+    result += ch;
   }
   return result;
 }
@@ -38,6 +43,7 @@ export async function POST(req: NextRequest) {
     const message = await client.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: isShort ? 1000 : duration === "10min" ? 5000 : 3000,
+      system: "You are a JSON API. Respond ONLY with a single valid JSON object. No markdown, no code blocks, no comments, no explanation. All string values must be on one line — never include literal newlines or tab characters inside JSON string values.",
       messages: [
         {
           role: "user",
