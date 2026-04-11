@@ -4,6 +4,25 @@ import { DURATION_OPTIONS } from "@/lib/introMusic";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+/** Fix unescaped control characters inside JSON string values */
+function sanitizeJson(text: string): string {
+  let result = "";
+  let inString = false;
+  let escape = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (escape) { result += ch; escape = false; continue; }
+    if (ch === "\\") { result += ch; escape = true; continue; }
+    if (ch === '"') { inString = !inString; result += ch; continue; }
+    if (inString && (ch === "\n" || ch === "\r" || ch === "\t")) {
+      result += ch === "\n" ? "\\n" : ch === "\r" ? "\\r" : "\\t";
+    } else {
+      result += ch;
+    }
+  }
+  return result;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { topic, duration = "short", characterDescription = "", language = "ko" } = await req.json();
@@ -79,7 +98,7 @@ Requirements:
     const jsonMatch = content.text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error("Failed to parse script JSON");
 
-    const result = JSON.parse(jsonMatch[0]);
+    const result = JSON.parse(sanitizeJson(jsonMatch[0]));
 
     return NextResponse.json({
       keyPhrase: result.keyPhrase ?? "",
