@@ -234,7 +234,7 @@ async function applyIntro({ mainVideoFile, audioDuration, keyPhrase, introMusicI
   try {
     const introFile = path.join(tmpDir, `intro-${ts}.mp4`);
     const combinedFile = path.join(tmpDir, `combined-${ts}.mp4`);
-    await buildHighlightIntro({ mainVideoFile, audioDuration, keyPhrase, introMusicId, FFMPEG, introFile });
+    await buildHighlightIntro({ mainVideoFile, audioDuration, keyPhrase, introMusicId, FFMPEG, introFile, tmpDir, ts });
     await concatenateVideos({ introFile, mainVideoFile, outputFile: combinedFile, FFMPEG });
     await fs.unlink(introFile).catch(() => {});
     return { finalVideoFile: combinedFile, introAdded: true };
@@ -244,9 +244,9 @@ async function applyIntro({ mainVideoFile, audioDuration, keyPhrase, introMusicI
   }
 }
 
-async function buildHighlightIntro({ mainVideoFile, audioDuration, keyPhrase, introMusicId, FFMPEG, introFile }: {
+async function buildHighlightIntro({ mainVideoFile, audioDuration, keyPhrase, introMusicId, FFMPEG, introFile, tmpDir, ts }: {
   mainVideoFile: string; audioDuration: number; keyPhrase: string;
-  introMusicId: string; FFMPEG: string; introFile: string;
+  introMusicId: string; FFMPEG: string; introFile: string; tmpDir: string; ts: number;
 }): Promise<void> {
   const startSec = Math.max(0, Math.min(audioDuration * 0.25, audioDuration - INTRO_DURATION - 1));
   const fontAbsPath = path.join(process.cwd(), "public", "fonts", "NanumGothic.ttf");
@@ -263,9 +263,21 @@ async function buildHighlightIntro({ mainVideoFile, audioDuration, keyPhrase, in
   ].join(",");
   let useMusicFile = false;
   let musicFileFwd = "";
+  let sfxTmpFile = "";
   if (introMusicId) {
-    const musicAbsPath = path.join(process.cwd(), "public", "music", `${introMusicId}.mp3`);
-    try { await fs.access(musicAbsPath); musicFileFwd = musicAbsPath.replace(/\\/g, "/"); useMusicFile = true; } catch {}
+    if (introMusicId.startsWith("http")) {
+      // Generated SFX URL — download to tmp
+      try {
+        const sfxRes = await fetch(introMusicId);
+        sfxTmpFile = path.join(tmpDir, `sfx-${ts}.mp3`);
+        await fs.writeFile(sfxTmpFile, Buffer.from(await sfxRes.arrayBuffer()));
+        musicFileFwd = sfxTmpFile.replace(/\\/g, "/");
+        useMusicFile = true;
+      } catch { /* ignore, fall through to no music */ }
+    } else {
+      const musicAbsPath = path.join(process.cwd(), "public", "music", `${introMusicId}.mp3`);
+      try { await fs.access(musicAbsPath); musicFileFwd = musicAbsPath.replace(/\\/g, "/"); useMusicFile = true; } catch {}
+    }
   }
   const cmd = useMusicFile
     ? `${FFMPEG} -ss ${startSec.toFixed(3)} -t ${INTRO_DURATION} -i "${mainFwd}" -i "${musicFileFwd}" -filter_complex "[0:v]${vf}[v];[1:a]atrim=0:${INTRO_DURATION},asetpts=PTS-STARTPTS,afade=t=out:st=${INTRO_DURATION - 2}:d=2[a]" -map "[v]" -map "[a]" -c:v libx264 -c:a aac -pix_fmt yuv420p "${introFwd}" -y`
