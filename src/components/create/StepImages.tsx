@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   ImageIcon, Loader2, ChevronRight, ChevronLeft,
   RefreshCw, Upload, X, Plus, Film, Sparkles,
-  AlertTriangle, CheckCircle2, GripVertical, ChevronUp, ChevronDown, Save, Zap,
+  AlertTriangle, CheckCircle2, GripVertical, ChevronUp, ChevronDown, Save,
 } from "lucide-react";
 import type { VideoProject } from "@/app/create/page";
 
@@ -31,9 +31,7 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
   );
   const [regeneratingIdx, setRegeneratingIdx] = useState<number | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [animLoading, setAnimLoading] = useState(false);
-  const [animError, setAnimError] = useState("");
-  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const[dragIdx, setDragIdx] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -87,60 +85,6 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
     }
   };
 
-  const generateAnimations = async () => {
-    setAnimLoading(true);
-    setAnimError("");
-    try {
-      // Step 1: Create predictions
-      const res = await fetch("/api/generate/animation", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scenes: project.scenes }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setAnimError((data.error ?? "애니메이션 생성 실패") + (data.detail ? ` (${data.detail})` : "")); return; }
-
-      const ids: string[] = Array.isArray(data.predictionIds) ? data.predictionIds : [];
-      if (!ids.length) { setAnimError("예측 ID를 받지 못했습니다"); return; }
-
-      // Step 2: Poll until all done
-      let animationUrls: string[] | null = null;
-      while (!animationUrls) {
-        await new Promise((r) => setTimeout(r, 5000));
-        const pollRes = await fetch(`/api/generate/animation?ids=${ids.join(",")}`);
-        const pollData = await pollRes.json();
-        if (!pollRes.ok) {
-          setAnimError((pollData.error ?? "애니메이션 상태 확인 실패") + (pollData.detail ? ` (${pollData.detail})` : ""));
-          return;
-        }
-        if (pollData.status === "succeeded" && Array.isArray(pollData.animationUrls)) {
-          animationUrls = pollData.animationUrls;
-        } else if (pollData.error) {
-          setAnimError(pollData.error + (pollData.detail ? ` (${pollData.detail})` : ""));
-          return;
-        }
-        // status === "processing" → keep polling
-      }
-
-      // Interleave: [img1, anim1, img2, anim2, ...]
-      const animItems: MediaItem[] = animationUrls.map((url) => ({
-        url, type: "video" as const, name: "animation",
-      }));
-      const images = mediaItems.filter((m) => m.type !== "video" || m.name !== "animation");
-      const merged: MediaItem[] = [];
-      const len = Math.max(images.length, animItems.length);
-      for (let i = 0; i < len; i++) {
-        if (images[i]) merged.push(images[i]);
-        if (animItems[i]) merged.push(animItems[i]);
-      }
-      syncUrls(merged);
-    } catch (e) {
-      console.error(e);
-      setAnimError("네트워크 오류가 발생했습니다");
-    } finally {
-      setAnimLoading(false);
-    }
-  };
 
   const regenerateImage = async (idx: number) => {
     setRegeneratingIdx(idx);
@@ -242,7 +186,7 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
                 </div>
                 <Button
                   onClick={generateImages}
-                  disabled={loading || animLoading || scenes.length === 0}
+                  disabled={loading || scenes.length === 0}
                   className="w-full gap-2 h-11"
                   variant={mediaItems.filter(m => m.type === "image" && !m.name).length > 0 ? "outline" : "default"}
                 >
@@ -253,24 +197,6 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
                   )}
                 </Button>
 
-                <Button
-                  onClick={generateAnimations}
-                  disabled={animLoading || loading || scenes.length === 0}
-                  className="w-full gap-2 h-11"
-                  variant="outline"
-                  title="현재 안정화 작업 중입니다"
-                >
-                  {animLoading ? (
-                    <><Loader2 className="w-4 h-4 animate-spin" /> 애니메이션 생성 중 ({scenes.length}개)...</>
-                  ) : (
-                    <><Zap className="w-4 h-4" /> 스틱맨 애니메이션 삽입 (베타)</>
-                  )}
-                </Button>
-                {animError && (
-                  <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-4 py-3">
-                    {animError}
-                  </div>
-                )}
               </TabsContent>
 
               <TabsContent value="upload" className="space-y-3 pt-2">
