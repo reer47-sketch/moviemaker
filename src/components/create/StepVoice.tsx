@@ -16,10 +16,10 @@ type Props = {
 };
 
 const VOICES = [
-  { id: "rachel", name: "Nova", desc: "자연스럽고 따뜻한 여성 목소리", gender: "여성" },
-  { id: "adam",   name: "Onyx", desc: "차분하고 신뢰감 있는 남성 목소리", gender: "남성" },
-  { id: "bella",  name: "Shimmer", desc: "밝고 활기찬 여성 목소리", gender: "여성" },
-  { id: "josh",   name: "Echo", desc: "젊고 에너지 넘치는 남성 목소리", gender: "남성" },
+  { id: "rachel",  name: "Rachel",  desc: "자연스럽고 따뜻한 여성 목소리", gender: "여성" },
+  { id: "adam",    name: "Adam",    desc: "차분하고 신뢰감 있는 남성 목소리", gender: "남성" },
+  { id: "bella",   name: "Bella",   desc: "밝고 활기찬 여성 목소리", gender: "여성" },
+  { id: "antoni",  name: "Antoni",  desc: "젊고 에너지 넘치는 남성 목소리", gender: "남성" },
 ];
 
 export function StepVoice({ project, updateProject, onNext, onPrev, onSave }: Props) {
@@ -111,7 +111,7 @@ export function StepVoice({ project, updateProject, onNext, onPrev, onSave }: Pr
           <div>
             <div className="text-lg">음성 생성</div>
             <div className="text-sm font-normal text-muted-foreground mt-0.5">
-              OpenAI TTS가 스크립트를 자연스러운 음성으로 변환합니다
+              ElevenLabs AI가 스크립트를 자연스러운 음성으로 변환합니다
             </div>
           </div>
         </CardTitle>

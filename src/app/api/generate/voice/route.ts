@@ -1,15 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import OpenAI from "openai";
 import { createServiceClient } from "@/lib/supabase";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-// OpenAI TTS voice mapping
-const VOICE_MAP: Record<string, "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer"> = {
-  rachel: "nova",    // 자연스럽고 따뜻한 여성
-  adam: "onyx",     // 차분하고 신뢰감 있는 남성
-  bella: "shimmer", // 밝고 활기찬 여성
-  josh: "echo",     // 젊고 에너지 넘치는 남성
+// ElevenLabs voice IDs
+const VOICE_MAP: Record<string, string> = {
+  rachel:  "21m00Tcm4TlvDq8ikWAM", // 자연스럽고 따뜻한 여성
+  adam:    "pNInz6obpgDQGcFmaJgB", // 차분하고 신뢰감 있는 남성
+  bella:   "EXAVITQu4vr4xnSDxMaL", // 밝고 활기찬 여성
+  antoni:  "ErXwobaYiN019PkySvjV", // 젊고 에너지 넘치는 남성
 };
 
 export async function POST(req: NextRequest) {
@@ -20,16 +17,37 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "스크립트와 목소리를 선택해주세요" }, { status: 400 });
     }
 
-    const voice = VOICE_MAP[voiceId] ?? "nova";
+    const elevenLabsVoiceId = VOICE_MAP[voiceId] ?? VOICE_MAP.rachel;
+    const apiKey = process.env.ELEVENLABS_API_KEY;
+    if (!apiKey) throw new Error("ELEVENLABS_API_KEY is not set");
 
-    const mp3 = await openai.audio.speech.create({
-      model: "tts-1",
-      voice,
-      input: script,
-      response_format: "mp3",
-    });
+    const res = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${elevenLabsVoiceId}`,
+      {
+        method: "POST",
+        headers: {
+          "xi-api-key": apiKey,
+          "Content-Type": "application/json",
+          Accept: "audio/mpeg",
+        },
+        body: JSON.stringify({
+          text: script,
+          model_id: "eleven_multilingual_v2",
+          voice_settings: {
+            stability: 0.5,
+            similarity_boost: 0.75,
+          },
+        }),
+      }
+    );
 
-    const audioBuffer = await mp3.arrayBuffer();
+    if (!res.ok) {
+      const err = await res.text();
+      console.error("ElevenLabs error:", res.status, err);
+      throw new Error(`ElevenLabs API error: ${res.status}`);
+    }
+
+    const audioBuffer = await res.arrayBuffer();
 
     // Upload to Supabase Storage
     const supabase = createServiceClient();
