@@ -100,7 +100,8 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
       const data = await res.json();
       if (!res.ok) { setAnimError((data.error ?? "애니메이션 생성 실패") + (data.detail ? ` (${data.detail})` : "")); return; }
 
-      const ids: string[] = data.predictionIds;
+      const ids: string[] = Array.isArray(data.predictionIds) ? data.predictionIds : [];
+      if (!ids.length) { setAnimError("예측 ID를 받지 못했습니다"); return; }
 
       // Step 2: Poll until all done
       let animationUrls: string[] | null = null;
@@ -108,8 +109,11 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
         await new Promise((r) => setTimeout(r, 5000));
         const pollRes = await fetch(`/api/generate/animation?ids=${ids.join(",")}`);
         const pollData = await pollRes.json();
-        if (!pollRes.ok) { setAnimError(pollData.error ?? "애니메이션 상태 확인 실패"); return; }
-        if (pollData.status === "succeeded") {
+        if (!pollRes.ok) {
+          setAnimError((pollData.error ?? "애니메이션 상태 확인 실패") + (pollData.detail ? ` (${pollData.detail})` : ""));
+          return;
+        }
+        if (pollData.status === "succeeded" && Array.isArray(pollData.animationUrls)) {
           animationUrls = pollData.animationUrls;
         } else if (pollData.error) {
           setAnimError(pollData.error + (pollData.detail ? ` (${pollData.detail})` : ""));
