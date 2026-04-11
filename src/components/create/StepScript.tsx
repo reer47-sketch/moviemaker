@@ -102,6 +102,7 @@ export function StepScript({ project, updateProject, onNext, onSave }: Props) {
   const handleSave = () => { onSave(); setJustSaved(true); setTimeout(() => setJustSaved(false), 2000); };
 
   const [duration, setDuration] = useState(project.duration ?? "short");
+  const [characterDescription, setCharacterDescription] = useState(project.characterDescription ?? "");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [fields, setFields] = useState<Record<string, string>>({});
   const [freeTopic, setFreeTopic] = useState(project.topic ?? "");
@@ -129,13 +130,13 @@ export function StepScript({ project, updateProject, onNext, onSave }: Props) {
       const res = await fetch("/api/generate/script", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic: prompt, duration }),
+        body: JSON.stringify({ topic: prompt, duration, characterDescription }),
       });
       const data = await res.json();
       setScript(data.script);
       setScenes(data.scenes);
       setKeyPhrase(data.keyPhrase ?? "");
-      updateProject({ topic, script: data.script, scenes: data.scenes, keyPhrase: data.keyPhrase ?? "", duration });
+      updateProject({ topic, script: data.script, scenes: data.scenes, keyPhrase: data.keyPhrase ?? "", duration, characterDescription });
     } catch (e) {
       console.error(e);
     } finally {
@@ -169,6 +170,18 @@ export function StepScript({ project, updateProject, onNext, onSave }: Props) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-5">
+
+        {/* Character description */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium">고정 캐릭터 설명 <span className="text-xs text-muted-foreground font-normal">(선택사항 — 모든 이미지에 적용)</span></label>
+          <input
+            type="text"
+            value={characterDescription}
+            onChange={(e) => setCharacterDescription(e.target.value)}
+            placeholder="예) a friendly cartoon character with round glasses and orange hoodie"
+            className="w-full px-4 py-3 rounded-xl bg-muted border border-border/50 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all"
+          />
+        </div>
 
         {/* Duration selector */}
         <div className="space-y-2">
@@ -363,7 +376,7 @@ export function StepScript({ project, updateProject, onNext, onSave }: Props) {
             onClick={() => {
               updateProject({
                 topic: buildTopic(selectedTemplate, fields, freeTopic),
-                script, scenes, keyPhrase, duration,
+                script, scenes, keyPhrase, duration, characterDescription,
               });
               onNext();
             }}

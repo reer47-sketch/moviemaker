@@ -6,7 +6,7 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export async function POST(req: NextRequest) {
   try {
-    const { topic, duration = "short" } = await req.json();
+    const { topic, duration = "short", characterDescription = "" } = await req.json();
 
     if (!topic?.trim()) {
       return NextResponse.json({ error: "주제를 입력해주세요" }, { status: 400 });
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
 - 한국어로 작성
 - 흥미롭고 시청자를 사로잡는 내용
 - keyPhrase: 영상 썸네일이나 인트로에 쓸 수 있는 가장 강렬한 핵심 문구 (15자 이내)
-- imagePrompt: 각 장면을 시각적으로 표현하는 영어 DALL-E 3 프롬프트. 구체적인 피사체, 배경, 조명, 카메라 앵글, 분위기를 묘사. 사진처럼 사실적이고 영화적인 구도`,
+- imagePrompt: 각 장면을 시각적으로 표현하는 영어 DALL-E 3 프롬프트. 구체적인 피사체, 배경, 조명, 카메라 앵글, 분위기를 묘사. 사진처럼 사실적이고 영화적인 구도${characterDescription ? `\n- 모든 imagePrompt에 반드시 이 캐릭터를 포함할 것: "${characterDescription}"` : ""}`,
         },
       ],
     });
