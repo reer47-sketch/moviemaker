@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   ImageIcon, Loader2, ChevronRight, ChevronLeft,
   RefreshCw, Upload, X, Plus, Film, Sparkles,
-  AlertTriangle, CheckCircle2, GripVertical, ChevronUp, ChevronDown, Save,
+  AlertTriangle, CheckCircle2, GripVertical, ChevronUp, ChevronDown, Save, Zap,
 } from "lucide-react";
 import type { VideoProject } from "@/app/create/page";
 
@@ -31,6 +31,8 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
   );
   const [regeneratingIdx, setRegeneratingIdx] = useState<number | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [animLoading, setAnimLoading] = useState(false);
+  const [animError, setAnimError] = useState("");
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -82,6 +84,38 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
       console.error(e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const generateAnimations = async () => {
+    setAnimLoading(true);
+    setAnimError("");
+    try {
+      const res = await fetch("/api/generate/animation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scenes: project.scenes }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setAnimError(data.error ?? "애니메이션 생성 실패"); return; }
+
+      // Interleave: [img1, anim1, img2, anim2, ...]
+      const animItems: MediaItem[] = (data.animationUrls as string[]).map((url) => ({
+        url, type: "video" as const, name: "animation",
+      }));
+      const images = mediaItems.filter((m) => m.type !== "video" || m.name !== "animation");
+      const merged: MediaItem[] = [];
+      const len = Math.max(images.length, animItems.length);
+      for (let i = 0; i < len; i++) {
+        if (images[i]) merged.push(images[i]);
+        if (animItems[i]) merged.push(animItems[i]);
+      }
+      syncUrls(merged);
+    } catch (e) {
+      console.error(e);
+      setAnimError("네트워크 오류가 발생했습니다");
+    } finally {
+      setAnimLoading(false);
     }
   };
 
@@ -185,7 +219,7 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
                 </div>
                 <Button
                   onClick={generateImages}
-                  disabled={loading || scenes.length === 0}
+                  disabled={loading || animLoading || scenes.length === 0}
                   className="w-full gap-2 h-11"
                   variant={mediaItems.filter(m => m.type === "image" && !m.name).length > 0 ? "outline" : "default"}
                 >
@@ -195,6 +229,24 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
                     <><Sparkles className="w-4 h-4" /> AI 이미지 생성하기</>
                   )}
                 </Button>
+
+                <Button
+                  onClick={generateAnimations}
+                  disabled={animLoading || loading || scenes.length === 0}
+                  className="w-full gap-2 h-11"
+                  variant="outline"
+                >
+                  {animLoading ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" /> 애니메이션 생성 중 ({scenes.length}개)...</>
+                  ) : (
+                    <><Zap className="w-4 h-4" /> 졸라맨 애니메이션 삽입</>
+                  )}
+                </Button>
+                {animError && (
+                  <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-4 py-3">
+                    {animError}
+                  </div>
+                )}
               </TabsContent>
 
               <TabsContent value="upload" className="space-y-3 pt-2">

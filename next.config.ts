@@ -15,6 +15,7 @@ const nextConfig: NextConfig = {
     "@ffprobe-installer/ffprobe",
     "fluent-ffmpeg",
     "sharp",
+    "replicate",
   ],
   images: {
     remotePatterns: [
