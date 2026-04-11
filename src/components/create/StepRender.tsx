@@ -82,7 +82,10 @@ export function StepRender({ project, updateProject, onNext, onPrev, onSave }: P
         return;
       }
       setProgress(100);
-      setCurrentStepMsg("완료!");
+      const introMsg = addHighlightIntro && project.keyPhrase
+        ? (data.introAdded ? "완료! (인트로 포함)" : "완료! (인트로 생성 실패 — 메인 영상만 저장됨)")
+        : "완료!";
+      setCurrentStepMsg(introMsg);
       setVideoUrl(data.videoUrl);
       updateProject({ videoUrl: data.videoUrl, addHighlightIntro, introMusicId });
       setDone(true);

@@ -117,9 +117,12 @@ export async function POST(req: NextRequest) {
       `${FFMPEG} ${inputs} -i "${audioFileFwd}" -filter_complex "${filterComplex}" ` +
       `-map "[vout]" -map "${n}:a" -c:v libx264 -c:a aac -pix_fmt yuv420p -shortest -movflags +faststart "${mainVideoFileFwd}" -y`;
 
+    console.log("[render] Starting FFmpeg main render, audioDuration:", audioDuration, "scenes:", scenes.length, "mediaFiles:", mediaFiles.length);
     await execAsync(mainCmd, { timeout: 300000, maxBuffer: 50 * 1024 * 1024 });
+    console.log("[render] Main render done");
 
     let finalVideoFile = mainVideoFile;
+    let introAdded = false;
 
     // Build highlight intro if requested
     if (addHighlightIntro && keyPhrase) {
@@ -127,6 +130,7 @@ export async function POST(req: NextRequest) {
         const introFile = path.join(tmpDir, `intro-${ts}.mp4`);
         const combinedFile = path.join(tmpDir, `combined-${ts}.mp4`);
 
+        console.log("[render] Building highlight intro...");
         await buildHighlightIntro({
           mainVideoFile,
           audioDuration,
@@ -136,12 +140,14 @@ export async function POST(req: NextRequest) {
           introFile,
         });
 
+        console.log("[render] Concatenating intro + main...");
         await concatenateVideos({ introFile, mainVideoFile, outputFile: combinedFile, FFMPEG });
 
         finalVideoFile = combinedFile;
+        introAdded = true;
         await fs.unlink(introFile).catch(() => {});
+        console.log("[render] Intro added successfully");
       } catch (introErr) {
-        // Intro failed — continue with main video only
         console.error("[render] Highlight intro failed, using main video:", introErr);
       }
     }
@@ -167,7 +173,7 @@ export async function POST(req: NextRequest) {
       ...mediaFiles.map(({ file }) => fs.unlink(file).catch(() => {})),
     ]);
 
-    return NextResponse.json({ videoUrl: data.publicUrl });
+    return NextResponse.json({ videoUrl: data.publicUrl, introAdded });
   } catch (error) {
     console.error("Render error:", error);
     return NextResponse.json(
@@ -267,9 +273,12 @@ async function concatenateVideos({
   const mainFwd = mainVideoFile.replace(/\\/g, "/");
   const outputFwd = outputFile.replace(/\\/g, "/");
 
+  // Resample both audio streams to 44100 Hz before concat —
+  // intro may be 44100 Hz while main video TTS audio could be any sample rate.
+  // FFmpeg's concat filter requires matching sample rates.
   const cmd =
     `${FFMPEG} -i "${introFwd}" -i "${mainFwd}"` +
-    ` -filter_complex "[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[v][a]"` +
+    ` -filter_complex "[0:a]aresample=44100[a0];[1:a]aresample=44100[a1];[0:v][a0][1:v][a1]concat=n=2:v=1:a=1[v][a]"` +
     ` -map "[v]" -map "[a]" -c:v libx264 -c:a aac -pix_fmt yuv420p -movflags +faststart "${outputFwd}" -y`;
 
   await execAsync(cmd, { timeout: 300000, maxBuffer: 50 * 1024 * 1024 });
