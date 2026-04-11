@@ -37,11 +37,11 @@ export async function POST(req: NextRequest) {
     const predictions = await Promise.all(
       (scenes as Scene[]).map((scene) =>
         replicate.predictions.create({
-          model: "minimax/video-01",
+          model: "wavespeedai/wan-2.1-t2v-480p",
           input: {
             prompt: buildPrompt(scene),
-            duration: 6,
-            ratio: "16:9",
+            negative_prompt:
+              "realistic photo, complex background, 3D render, watermark, text, ugly, blurry",
           },
         })
       )
