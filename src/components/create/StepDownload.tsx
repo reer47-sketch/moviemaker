@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Download, CheckCircle, Share2, LayoutDashboard, Plus, Film, Loader2,
 } from "lucide-react";
+import Link from "next/link";
 import type { VideoProject } from "@/app/create/page";
 
 type Props = {
@@ -23,7 +24,13 @@ async function getSignedDownloadUrl(url: string, filename: string): Promise<stri
   return data.signedUrl ?? url;
 }
 
+function cleanFilename(topic?: string, keyPhrase?: string): string {
+  const raw = (keyPhrase?.trim() || topic?.trim() || "video").slice(0, 25);
+  return raw.replace(/[\\/:*?"<>|]/g, "").replace(/\s+/g, "_").replace(/^_+|_+$/g, "") || "video";
+}
+
 export function StepDownload({ project }: Props) {
+  const router = useRouter();
   const finalUrl = project.subtitledVideoUrl ?? project.videoUrl ?? "";
   const [downloading, setDownloading] = useState(false);
 
@@ -31,7 +38,7 @@ export function StepDownload({ project }: Props) {
     if (!finalUrl) return;
     setDownloading(true);
     try {
-      const filename = (project.topic || "moviemaker") + ".mp4";
+      const filename = cleanFilename(project.topic, project.keyPhrase) + ".mp4";
       const signedUrl = await getSignedDownloadUrl(finalUrl, filename);
       // Create a hidden <a> and click it — works on mobile too
       const a = document.createElement("a");
@@ -123,12 +130,10 @@ export function StepDownload({ project }: Props) {
               <Share2 className="w-4 h-4" />
               링크 복사
             </Button>
-            <Link href="/create" className="block">
-              <Button variant="outline" className="w-full gap-2">
-                <Plus className="w-4 h-4" />
-                새 영상 만들기
-              </Button>
-            </Link>
+            <Button variant="outline" className="w-full gap-2" onClick={() => router.push("/create")}>
+              <Plus className="w-4 h-4" />
+              새 영상 만들기
+            </Button>
           </div>
 
           <Link href="/dashboard" className="block">

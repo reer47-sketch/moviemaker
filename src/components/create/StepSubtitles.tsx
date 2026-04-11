@@ -60,6 +60,7 @@ export function StepSubtitles({ project, updateProject, onNext, onPrev, onSave }
           fontSize,
           fontName,
           introOffset: project.introAdded ? 6 : 0,
+          language: project.language ?? "ko",
         }),
       });
       const data = await res.json();

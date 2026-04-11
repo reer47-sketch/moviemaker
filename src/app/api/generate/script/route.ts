@@ -6,7 +6,8 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export async function POST(req: NextRequest) {
   try {
-    const { topic, duration = "short", characterDescription = "" } = await req.json();
+    const { topic, duration = "short", characterDescription = "", language = "ko" } = await req.json();
+    const isEn = language === "en";
 
     if (!topic?.trim()) {
       return NextResponse.json({ error: "주제를 입력해주세요" }, { status: 400 });
@@ -21,7 +22,31 @@ export async function POST(req: NextRequest) {
       messages: [
         {
           role: "user",
-          content: `다음 주제로 유튜브 영상 스크립트를 작성해주세요: "${topic}"
+          content: isEn
+            ? `Write a YouTube video script about: "${topic}"
+
+Respond ONLY in this exact JSON format (no other text):
+{
+  "keyPhrase": "The most impactful phrase from the video (max 10 words, hook the viewer)",
+  "script": "Full narration script as natural flowing text",
+  "scenes": [
+    {
+      "title": "Scene title",
+      "content": "Narration for this scene",
+      "imagePrompt": "A detailed DALL-E 3 image generation prompt in English for this scene. Photorealistic, cinematic. Describe specific subjects, environment, lighting, camera angle, mood. No text or watermarks. 16:9 composition."
+    }
+  ]
+}
+
+Requirements:
+- ${dur.minScenes}–${dur.maxScenes} scenes total
+- Full script ~${dur.targetWords} words (${dur.label})
+- Each scene has a clear focus
+- Write in English
+- Engaging, compelling content
+- keyPhrase: powerful hook phrase for thumbnail or intro (max 10 words)
+- imagePrompt: English DALL-E 3 prompt, cinematic and photorealistic${characterDescription ? `\n- Include this character in every imagePrompt: "${characterDescription}"` : ""}`
+            : `다음 주제로 유튜브 영상 스크립트를 작성해주세요: "${topic}"
 
 반드시 아래 JSON 형식으로만 응답해주세요 (다른 텍스트 없이):
 {

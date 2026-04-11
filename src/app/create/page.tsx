@@ -33,6 +33,7 @@ export type VideoProject = {
   addHighlightIntro: boolean; // Prepend a silent highlight clip with keyPhrase
   introAdded: boolean;       // Whether intro was actually prepended in the rendered video
   characterDescription: string; // Fixed character description applied to all image prompts
+  language: string;             // "ko" | "en"
 };
 
 const STEPS = [

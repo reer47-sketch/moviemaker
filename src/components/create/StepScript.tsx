@@ -102,6 +102,7 @@ export function StepScript({ project, updateProject, onNext, onSave }: Props) {
   const handleSave = () => { onSave(); setJustSaved(true); setTimeout(() => setJustSaved(false), 2000); };
 
   const [duration, setDuration] = useState(project.duration ?? "short");
+  const [language, setLanguage] = useState(project.language ?? "ko");
   const [characterDescription, setCharacterDescription] = useState(project.characterDescription ?? "");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [fields, setFields] = useState<Record<string, string>>({});
@@ -130,13 +131,13 @@ export function StepScript({ project, updateProject, onNext, onSave }: Props) {
       const res = await fetch("/api/generate/script", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic: prompt, duration, characterDescription }),
+        body: JSON.stringify({ topic: prompt, duration, characterDescription, language }),
       });
       const data = await res.json();
       setScript(data.script);
       setScenes(data.scenes);
       setKeyPhrase(data.keyPhrase ?? "");
-      updateProject({ topic, script: data.script, scenes: data.scenes, keyPhrase: data.keyPhrase ?? "", duration, characterDescription });
+      updateProject({ topic, script: data.script, scenes: data.scenes, keyPhrase: data.keyPhrase ?? "", duration, characterDescription, language });
     } catch (e) {
       console.error(e);
     } finally {
@@ -170,6 +171,26 @@ export function StepScript({ project, updateProject, onNext, onSave }: Props) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-5">
+
+        {/* Language selector */}
+        <div className="flex items-center gap-3">
+          <label className="text-sm font-medium shrink-0">언어</label>
+          <div className="flex rounded-lg border border-border/50 overflow-hidden text-sm">
+            {[{ id: "ko", label: "한국어" }, { id: "en", label: "English" }].map((lang) => (
+              <button
+                key={lang.id}
+                onClick={() => setLanguage(lang.id)}
+                className={`px-4 py-1.5 transition-colors ${
+                  language === lang.id
+                    ? "bg-primary text-primary-foreground font-medium"
+                    : "bg-muted/30 text-muted-foreground hover:bg-muted"
+                }`}
+              >
+                {lang.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
         {/* Character description */}
         <div className="space-y-2">

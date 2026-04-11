@@ -54,7 +54,7 @@ function mapScriptToSentences(
 
 export async function POST(req: NextRequest) {
   try {
-    const { audioUrl, videoUrl, script, style, fontSize, fontName, introOffset = 0 } =
+    const { audioUrl, videoUrl, script, style, fontSize, fontName, introOffset = 0, language = "ko" } =
       await req.json();
 
     if (!audioUrl || !videoUrl) {
@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
     const transcription = await openai.audio.transcriptions.create({
       file: audioFile,
       model: "whisper-1",
-      language: "ko",
+      language: language === "en" ? "en" : "ko",
       response_format: "verbose_json",
       timestamp_granularities: ["segment"],
     });
