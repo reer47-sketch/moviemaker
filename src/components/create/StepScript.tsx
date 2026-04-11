@@ -111,6 +111,7 @@ export function StepScript({ project, updateProject, onNext, onSave }: Props) {
   const [script, setScript] = useState(project.script ?? "");
   const [scenes, setScenes] = useState<Scene[]>(project.scenes ?? []);
   const [keyPhrase, setKeyPhrase] = useState(project.keyPhrase ?? "");
+  const [scriptError, setScriptError] = useState("");
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [editBuf, setEditBuf] = useState<Scene>({ title: "", content: "" });
 
@@ -134,12 +135,18 @@ export function StepScript({ project, updateProject, onNext, onSave }: Props) {
         body: JSON.stringify({ topic: prompt, duration, characterDescription, language }),
       });
       const data = await res.json();
+      if (!res.ok || !data.scenes) {
+        setScriptError(data.error ?? "스크립트 생성에 실패했습니다");
+        return;
+      }
+      setScriptError("");
       setScript(data.script);
       setScenes(data.scenes);
       setKeyPhrase(data.keyPhrase ?? "");
       updateProject({ topic, script: data.script, scenes: data.scenes, keyPhrase: data.keyPhrase ?? "", duration, characterDescription, language });
     } catch (e) {
       console.error(e);
+      setScriptError("네트워크 오류가 발생했습니다");
     } finally {
       setLoading(false);
     }
@@ -307,6 +314,12 @@ export function StepScript({ project, updateProject, onNext, onSave }: Props) {
               placeholder="원하는 영상 주제를 자유롭게 입력하세요..."
               className="w-full px-4 py-3 rounded-xl bg-muted border border-border/50 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all"
             />
+          </div>
+        )}
+
+        {scriptError && (
+          <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-4 py-3">
+            {scriptError}
           </div>
         )}
 
