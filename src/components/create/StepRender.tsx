@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
   Clapperboard, Loader2, ChevronRight, ChevronLeft,
-  CheckCircle, Save, Zap, Music,
+  CheckCircle, Save, Zap, Music, RotateCcw,
 } from "lucide-react";
 import type { VideoProject } from "@/app/create/page";
 import { INTRO_MUSIC_OPTIONS } from "@/lib/introMusic";
@@ -216,6 +216,18 @@ export function StepRender({ project, updateProject, onNext, onPrev, onSave }: P
           <Button onClick={startRender} className="w-full gap-2 h-11">
             <Clapperboard className="w-4 h-4" />
             영상 렌더링 시작
+          </Button>
+        )}
+
+        {/* Re-render Button */}
+        {!loading && done && (
+          <Button
+            variant="outline"
+            onClick={() => { setDone(false); setVideoUrl(""); setProgress(0); setCurrentStepMsg(""); setErrorMsg(""); }}
+            className="w-full gap-2"
+          >
+            <RotateCcw className="w-4 h-4" />
+            다시 렌더링
           </Button>
         )}
 

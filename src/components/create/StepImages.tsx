@@ -417,21 +417,27 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
                     </div>
 
                     {/* Slide/Image type toggle */}
-                    <button
-                      onClick={() => {
-                        const updated = [...(project.scenes ?? [])];
-                        const cur = updated[i]?.sceneType ?? "slide";
-                        updated[i] = { ...updated[i], sceneType: cur === "slide" ? "image" : "slide" };
-                        updateProject({ scenes: updated });
-                      }}
-                      className={`px-2 py-1 rounded text-[10px] font-medium border shrink-0 transition-colors ${
-                        (project.scenes?.[i]?.sceneType ?? "slide") === "image"
-                          ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-400"
-                          : "border-violet-500/40 bg-violet-500/10 text-violet-400"
-                      }`}
-                    >
-                      {(project.scenes?.[i]?.sceneType ?? "slide") === "image" ? "🖼 이미지" : "📋 슬라이드"}
-                    </button>
+                    {(() => {
+                      // Default: image if mediaItem exists, slide if no media
+                      const effectiveType = project.scenes?.[i]?.sceneType ?? (mediaItems[i] ? "image" : "slide");
+                      return (
+                        <button
+                          onClick={() => {
+                            const updated = [...(project.scenes ?? [])];
+                            const cur = updated[i]?.sceneType ?? (mediaItems[i] ? "image" : "slide");
+                            updated[i] = { ...updated[i], sceneType: cur === "slide" ? "image" : "slide" };
+                            updateProject({ scenes: updated });
+                          }}
+                          className={`px-2 py-1 rounded text-[10px] font-medium border shrink-0 transition-colors ${
+                            effectiveType === "image"
+                              ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-400"
+                              : "border-violet-500/40 bg-violet-500/10 text-violet-400"
+                          }`}
+                        >
+                          {effectiveType === "image" ? "🖼 이미지" : "📋 슬라이드"}
+                        </button>
+                      );
+                    })()}
 
                     {/* Assigned image */}
                     <div className="w-20 h-14 rounded-lg overflow-hidden bg-muted shrink-0 border border-border/30">

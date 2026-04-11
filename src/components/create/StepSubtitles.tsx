@@ -64,7 +64,7 @@ export function StepSubtitles({ project, updateProject, onNext, onPrev, onSave }
       });
       const data = await res.json();
       if (!res.ok) {
-        setErrorMsg(data.error ?? "자막 생성에 실패했습니다");
+        setErrorMsg((data.error ?? "자막 생성에 실패했습니다") + (data.detail ? `\n${data.detail}` : ""));
         return;
       }
       setSubtitles(data.subtitles ?? []);
