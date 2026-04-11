@@ -91,6 +91,7 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
     setAnimLoading(true);
     setAnimError("");
     try {
+      // Step 1: Create predictions
       const res = await fetch("/api/generate/animation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -99,8 +100,23 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
       const data = await res.json();
       if (!res.ok) { setAnimError(data.error ?? "애니메이션 생성 실패"); return; }
 
+      const ids: string[] = data.predictionIds;
+
+      // Step 2: Poll until all done
+      let animationUrls: string[] | null = null;
+      while (!animationUrls) {
+        await new Promise((r) => setTimeout(r, 5000));
+        const pollRes = await fetch(`/api/generate/animation?ids=${ids.join(",")}`);
+        const pollData = await pollRes.json();
+        if (!pollRes.ok) { setAnimError(pollData.error ?? "애니메이션 상태 확인 실패"); return; }
+        if (pollData.status === "succeeded") {
+          animationUrls = pollData.animationUrls;
+        }
+        // status === "processing" → keep polling
+      }
+
       // Interleave: [img1, anim1, img2, anim2, ...]
-      const animItems: MediaItem[] = (data.animationUrls as string[]).map((url) => ({
+      const animItems: MediaItem[] = animationUrls.map((url) => ({
         url, type: "video" as const, name: "animation",
       }));
       const images = mediaItems.filter((m) => m.type !== "video" || m.name !== "animation");

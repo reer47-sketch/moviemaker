@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Replicate from "replicate";
 import { createServiceClient } from "@/lib/supabase";
 
-export const maxDuration = 300;
+export const maxDuration = 60;
 
 const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
 
@@ -17,44 +17,8 @@ function buildPrompt(scene: Scene): string {
   );
 }
 
-async function generateClip(scene: Scene): Promise<string> {
-  const output = await replicate.run(
-    "wavespeedai/wan-2.1-t2v-480p" as `${string}/${string}`,
-    {
-      input: {
-        prompt: buildPrompt(scene),
-        negative_prompt:
-          "realistic photo, complex background, 3D render, watermark, text, ugly, blurry",
-        num_frames: 24,
-        fps: 8,
-        width: 480,
-        height: 272,
-      },
-    }
-  );
-
-  // output is a URL string or array
-  const raw = output as unknown;
-  const url = Array.isArray(raw) ? String(raw[0]) : String(raw);
-  if (!url) throw new Error("No output from Replicate");
-
-  // Download clip and re-upload to Supabase for permanent storage
-  const videoRes = await fetch(url);
-  if (!videoRes.ok) throw new Error(`Failed to download clip: ${videoRes.status}`);
-  const videoBuffer = await videoRes.arrayBuffer();
-
-  const supabase = createServiceClient();
-  const fileName = `animations/${Date.now()}-${Math.random().toString(36).slice(2)}.mp4`;
-
-  const { error } = await supabase.storage
-    .from("media")
-    .upload(fileName, videoBuffer, { contentType: "video/mp4" });
-  if (error) throw error;
-
-  const { data } = supabase.storage.from("media").getPublicUrl(fileName);
-  return data.publicUrl;
-}
-
+// POST /api/generate/animation
+// body: { scenes } → returns { predictionIds: string[] }
 export async function POST(req: NextRequest) {
   if (!process.env.REPLICATE_API_TOKEN) {
     return NextResponse.json(
@@ -69,22 +33,90 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "장면 정보가 필요합니다" }, { status: 400 });
     }
 
-    // Generate clips in parallel
-    console.log("[animation] Generating", scenes.length, "clips in parallel");
+    // Create predictions in parallel — return IDs immediately without waiting
+    const predictions = await Promise.all(
+      (scenes as Scene[]).map((scene) =>
+        replicate.predictions.create({
+          model: "wavespeedai/wan-2.1-t2v-480p",
+          input: {
+            prompt: buildPrompt(scene),
+            negative_prompt:
+              "realistic photo, complex background, 3D render, watermark, text, ugly, blurry",
+            num_frames: 24,
+            fps: 8,
+            width: 480,
+            height: 272,
+          },
+        })
+      )
+    );
+
+    const predictionIds = predictions.map((p) => p.id);
+    console.log("[animation] Created predictions:", predictionIds);
+    return NextResponse.json({ predictionIds });
+  } catch (error) {
+    console.error("Animation prediction creation error:", error);
+    return NextResponse.json(
+      { error: "애니메이션 생성 요청 중 오류가 발생했습니다", detail: String(error) },
+      { status: 500 }
+    );
+  }
+}
+
+// GET /api/generate/animation?ids=id1,id2,...
+// Checks status of all predictions; if all done, uploads and returns URLs
+export async function GET(req: NextRequest) {
+  if (!process.env.REPLICATE_API_TOKEN) {
+    return NextResponse.json({ error: "REPLICATE_API_TOKEN이 설정되지 않았습니다" }, { status: 500 });
+  }
+
+  const ids = req.nextUrl.searchParams.get("ids")?.split(",").filter(Boolean) ?? [];
+  if (!ids.length) {
+    return NextResponse.json({ error: "ids가 필요합니다" }, { status: 400 });
+  }
+
+  try {
+    const predictions = await Promise.all(ids.map((id) => replicate.predictions.get(id)));
+
+    const statuses = predictions.map((p) => p.status);
+    const allDone = statuses.every((s) => s === "succeeded" || s === "failed");
+    const anyFailed = statuses.some((s) => s === "failed");
+
+    if (!allDone) {
+      return NextResponse.json({ status: "processing", statuses });
+    }
+
+    if (anyFailed) {
+      return NextResponse.json({ error: "일부 애니메이션 생성에 실패했습니다" }, { status: 500 });
+    }
+
+    // All succeeded — upload to Supabase
+    const supabase = createServiceClient();
     const animationUrls = await Promise.all(
-      (scenes as Scene[]).map(async (scene) => {
-        console.log("[animation] Starting clip for scene:", scene.title);
-        const url = await generateClip(scene);
-        console.log("[animation] Clip done:", scene.title);
-        return url;
+      predictions.map(async (p) => {
+        const raw = p.output as unknown;
+        const url = Array.isArray(raw) ? String(raw[0]) : String(raw);
+
+        const videoRes = await fetch(url);
+        if (!videoRes.ok) throw new Error(`Failed to download clip: ${videoRes.status}`);
+        const videoBuffer = await videoRes.arrayBuffer();
+
+        const fileName = `animations/${Date.now()}-${Math.random().toString(36).slice(2)}.mp4`;
+        const { error } = await supabase.storage
+          .from("media")
+          .upload(fileName, videoBuffer, { contentType: "video/mp4" });
+        if (error) throw error;
+
+        const { data } = supabase.storage.from("media").getPublicUrl(fileName);
+        return data.publicUrl;
       })
     );
 
-    return NextResponse.json({ animationUrls });
+    return NextResponse.json({ status: "succeeded", animationUrls });
   } catch (error) {
-    console.error("Animation generation error:", error);
+    console.error("Animation poll error:", error);
     return NextResponse.json(
-      { error: "애니메이션 생성 중 오류가 발생했습니다", detail: String(error) },
+      { error: "상태 확인 중 오류가 발생했습니다", detail: String(error) },
       { status: 500 }
     );
   }
