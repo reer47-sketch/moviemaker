@@ -10,27 +10,19 @@ const execAsync = promisify(exec);
 
 export const maxDuration = 300;
 
-/**
- * Escape text for FFmpeg drawtext `text=` option value.
- * The value is single-quoted inside the filter string, which itself is
- * double-quoted when passed to the shell via exec().
- * Two escaping layers apply:
- *   1. Shell (double-quote context): \  "  $  `  must be backslash-escaped
- *   2. FFmpeg filter parser (single-quote context): '  :  {  }  must be escaped
- */
 function escapeDrawtext(t: string): string {
   return t
-    .replace(/\\/g, "\\\\")  // 1. backslash (must be first)
-    .replace(/\$/g, "\\$")   // 2. dollar sign  — shell variable expansion
-    .replace(/`/g, "\\`")    // 3. backtick     — shell command substitution
-    .replace(/"/g, '\\"')    // 4. double quote — would close the outer "-vf "..." shell arg
-    .replace(/'/g, "\\'")    // 5. single quote — FFmpeg filter single-quote delimiter
-    .replace(/:/g, "\\:")    // 6. colon        — FFmpeg option separator
-    .replace(/\{/g, "\\{")   // 7. open brace   — FFmpeg drawtext expansion
-    .replace(/\}/g, "\\}");  // 8. close brace
+    .replace(/\\/g, "\\\\")
+    .replace(/\$/g, "\\$")
+    .replace(/`/g, "\\`")
+    .replace(/"/g, '\\"')
+    .replace(/'/g, "\\'")
+    .replace(/:/g, "\\:")
+    .replace(/\{/g, "\\{")
+    .replace(/\}/g, "\\}");
 }
 
-const INTRO_DURATION = 6; // seconds
+const INTRO_DURATION = 6;
 
 export async function POST(req: NextRequest) {
   try {
@@ -39,7 +31,7 @@ export async function POST(req: NextRequest) {
       keyPhrase = "", introMusicId = "", addHighlightIntro = false,
     } = await req.json();
 
-    if (!scenes || !audioUrl || !imageUrls?.length) {
+    if (!scenes || !audioUrl) {
       return NextResponse.json({ error: "필요한 데이터가 없습니다" }, { status: 400 });
     }
 
@@ -57,7 +49,6 @@ export async function POST(req: NextRequest) {
     const audioFile = path.join(tmpDir, `audio-${ts}.mp3`);
     await fs.writeFile(audioFile, Buffer.from(await audioRes.arrayBuffer()));
 
-    // Get audio duration
     const audioDuration: number = await new Promise((resolve, reject) => {
       ffmpegFluent.ffprobe(audioFile, (err: unknown, meta: { format: { duration?: number } }) => {
         if (err) reject(err);
@@ -65,22 +56,84 @@ export async function POST(req: NextRequest) {
       });
     });
 
-    const secondsPerScene = audioDuration / scenes.length;
+    // Check if any slides (non-image scenes)
+    const hasSlides = scenes.some((s: { sceneType?: string }) => s.sceneType !== "image");
 
-    // Download media — images → JPEG (sharp), videos → kept as-is
+    if (hasSlides) {
+      try {
+        const { bundle } = await import("@remotion/bundler");
+        const { renderMedia, selectComposition } = await import("@remotion/renderer");
+
+        const fps = 30;
+        const totalFrames = Math.ceil(audioDuration * fps);
+        const framesPerScene = Math.floor(totalFrames / scenes.length);
+
+        const remotionScenes = scenes.map((scene: { title: string; content: string; sceneType?: string }, i: number) => ({
+          title: scene.title,
+          content: scene.content,
+          sceneType: scene.sceneType ?? "slide",
+          imageUrl: imageUrls?.[i] ?? "",
+          startFrame: i * framesPerScene,
+          durationFrames: i === scenes.length - 1
+            ? totalFrames - i * framesPerScene
+            : framesPerScene,
+        }));
+
+        const bundled = await bundle({
+          entryPoint: path.join(process.cwd(), "src/remotion/root.tsx"),
+        });
+
+        const composition = await selectComposition({
+          serveUrl: bundled,
+          id: "VideoComposition",
+          inputProps: { scenes: remotionScenes, audioUrl },
+        });
+
+        const mainVideoFile = path.join(tmpDir, `video-${ts}.mp4`);
+
+        await renderMedia({
+          composition,
+          serveUrl: bundled,
+          codec: "h264",
+          outputLocation: mainVideoFile,
+          inputProps: { scenes: remotionScenes, audioUrl },
+        });
+
+        const { finalVideoFile, introAdded } = await applyIntro({
+          mainVideoFile, audioDuration, keyPhrase, introMusicId, addHighlightIntro, FFMPEG, ts, tmpDir,
+        });
+
+        const supabase = createServiceClient();
+        const videoBuffer = await fs.readFile(finalVideoFile);
+        const fileName = `videos/video-${ts}.mp4`;
+        const { error } = await supabase.storage.from("media").upload(fileName, videoBuffer, { contentType: "video/mp4" });
+        if (error) throw error;
+        const { data } = supabase.storage.from("media").getPublicUrl(fileName);
+
+        await Promise.all([
+          fs.unlink(audioFile).catch(() => {}),
+          fs.unlink(mainVideoFile).catch(() => {}),
+          finalVideoFile !== mainVideoFile ? fs.unlink(finalVideoFile).catch(() => {}) : Promise.resolve(),
+        ]);
+
+        return NextResponse.json({ videoUrl: data.publicUrl, introAdded });
+      } catch (remotionErr) {
+        console.error("[render] Remotion failed, falling back to FFmpeg:", remotionErr);
+      }
+    }
+
+    // ── FFmpeg fallback ──
     const sharp = (await import("sharp")).default;
     type MediaFile = { file: string; isVideo: boolean };
     const mediaFiles: MediaFile[] = [];
+    const urls: string[] = imageUrls ?? [];
+    const secondsPerScene = audioDuration / Math.max(urls.length, 1);
 
-    for (let i = 0; i < imageUrls.length; i++) {
-      const res = await fetch(imageUrls[i]);
+    for (let i = 0; i < urls.length; i++) {
+      const res = await fetch(urls[i]);
       const contentType = res.headers.get("content-type") ?? "";
       const buf = Buffer.from(await res.arrayBuffer());
-
-      const isVideo =
-        contentType.startsWith("video/") ||
-        /\.(mp4|mov|avi|webm|mkv|m4v)$/i.test(imageUrls[i]);
-
+      const isVideo = contentType.startsWith("video/") || /\.(mp4|mov|avi|webm|mkv|m4v)$/i.test(urls[i]);
       if (isVideo) {
         const vidFile = path.join(tmpDir, `vid-${ts}-${i}.mp4`);
         await fs.writeFile(vidFile, buf);
@@ -92,17 +145,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Build FFmpeg inputs
     const n = mediaFiles.length;
     const dur = secondsPerScene.toFixed(2);
-    const inputs = mediaFiles
-      .map(({ file, isVideo }) =>
-        isVideo
-          ? `-stream_loop -1 -t ${dur} -i "${file}"`
-          : `-loop 1 -t ${dur} -i "${file}"`
-      )
-      .join(" ");
-
+    const inputs = mediaFiles.map(({ file, isVideo }) =>
+      isVideo ? `-stream_loop -1 -t ${dur} -i "${file}"` : `-loop 1 -t ${dur} -i "${file}"`
+    ).join(" ");
     const filterParts = mediaFiles.map((_, i) =>
       `[${i}:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=25[v${i}]`
     );
@@ -112,60 +159,24 @@ export async function POST(req: NextRequest) {
     const mainVideoFile = path.join(tmpDir, `video-${ts}.mp4`);
     const audioFileFwd = audioFile.replace(/\\/g, "/");
     const mainVideoFileFwd = mainVideoFile.replace(/\\/g, "/");
-
     const mainCmd =
       `${FFMPEG} ${inputs} -i "${audioFileFwd}" -filter_complex "${filterComplex}" ` +
       `-map "[vout]" -map "${n}:a" -c:v libx264 -c:a aac -pix_fmt yuv420p -shortest -movflags +faststart "${mainVideoFileFwd}" -y`;
 
-    console.log("[render] Starting FFmpeg main render, audioDuration:", audioDuration, "scenes:", scenes.length, "mediaFiles:", mediaFiles.length);
+    console.log("[render] FFmpeg render, duration:", audioDuration, "scenes:", scenes.length);
     await execAsync(mainCmd, { timeout: 300000, maxBuffer: 50 * 1024 * 1024 });
-    console.log("[render] Main render done");
 
-    let finalVideoFile = mainVideoFile;
-    let introAdded = false;
+    const { finalVideoFile, introAdded } = await applyIntro({
+      mainVideoFile, audioDuration, keyPhrase, introMusicId, addHighlightIntro, FFMPEG, ts, tmpDir,
+    });
 
-    // Build highlight intro if requested
-    if (addHighlightIntro && keyPhrase) {
-      try {
-        const introFile = path.join(tmpDir, `intro-${ts}.mp4`);
-        const combinedFile = path.join(tmpDir, `combined-${ts}.mp4`);
-
-        console.log("[render] Building highlight intro...");
-        await buildHighlightIntro({
-          mainVideoFile,
-          audioDuration,
-          keyPhrase,
-          introMusicId,
-          FFMPEG,
-          introFile,
-        });
-
-        console.log("[render] Concatenating intro + main...");
-        await concatenateVideos({ introFile, mainVideoFile, outputFile: combinedFile, FFMPEG });
-
-        finalVideoFile = combinedFile;
-        introAdded = true;
-        await fs.unlink(introFile).catch(() => {});
-        console.log("[render] Intro added successfully");
-      } catch (introErr) {
-        console.error("[render] Highlight intro failed, using main video:", introErr);
-      }
-    }
-
-    // Upload to Supabase
     const supabase = createServiceClient();
     const videoBuffer = await fs.readFile(finalVideoFile);
     const fileName = `videos/video-${ts}.mp4`;
-
-    const { error } = await supabase.storage
-      .from("media")
-      .upload(fileName, videoBuffer, { contentType: "video/mp4" });
-
+    const { error } = await supabase.storage.from("media").upload(fileName, videoBuffer, { contentType: "video/mp4" });
     if (error) throw error;
-
     const { data } = supabase.storage.from("media").getPublicUrl(fileName);
 
-    // Cleanup
     await Promise.all([
       fs.unlink(audioFile).catch(() => {}),
       fs.unlink(mainVideoFile).catch(() => {}),
@@ -176,110 +187,63 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ videoUrl: data.publicUrl, introAdded });
   } catch (error) {
     console.error("Render error:", error);
-    return NextResponse.json(
-      { error: "영상 렌더링 중 오류가 발생했습니다" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "영상 렌더링 중 오류가 발생했습니다" }, { status: 500 });
   }
 }
 
-async function buildHighlightIntro({
-  mainVideoFile,
-  audioDuration,
-  keyPhrase,
-  introMusicId,
-  FFMPEG,
-  introFile,
-}: {
-  mainVideoFile: string;
-  audioDuration: number;
-  keyPhrase: string;
-  introMusicId: string;
-  FFMPEG: string;
-  introFile: string;
-}): Promise<void> {
-  // Start at 25% of main video, clamped so we don't overshoot
-  const startSec = Math.max(0, Math.min(
-    audioDuration * 0.25,
-    audioDuration - INTRO_DURATION - 1
-  ));
+async function applyIntro({ mainVideoFile, audioDuration, keyPhrase, introMusicId, addHighlightIntro, FFMPEG, ts, tmpDir }: {
+  mainVideoFile: string; audioDuration: number; keyPhrase: string; introMusicId: string;
+  addHighlightIntro: boolean; FFMPEG: string; ts: number; tmpDir: string;
+}): Promise<{ finalVideoFile: string; introAdded: boolean }> {
+  if (!addHighlightIntro || !keyPhrase) return { finalVideoFile: mainVideoFile, introAdded: false };
+  try {
+    const introFile = path.join(tmpDir, `intro-${ts}.mp4`);
+    const combinedFile = path.join(tmpDir, `combined-${ts}.mp4`);
+    await buildHighlightIntro({ mainVideoFile, audioDuration, keyPhrase, introMusicId, FFMPEG, introFile });
+    await concatenateVideos({ introFile, mainVideoFile, outputFile: combinedFile, FFMPEG });
+    await fs.unlink(introFile).catch(() => {});
+    return { finalVideoFile: combinedFile, introAdded: true };
+  } catch (e) {
+    console.error("[render] Intro failed:", e);
+    return { finalVideoFile: mainVideoFile, introAdded: false };
+  }
+}
 
-  // Korean font for text overlay
+async function buildHighlightIntro({ mainVideoFile, audioDuration, keyPhrase, introMusicId, FFMPEG, introFile }: {
+  mainVideoFile: string; audioDuration: number; keyPhrase: string;
+  introMusicId: string; FFMPEG: string; introFile: string;
+}): Promise<void> {
+  const startSec = Math.max(0, Math.min(audioDuration * 0.25, audioDuration - INTRO_DURATION - 1));
   const fontAbsPath = path.join(process.cwd(), "public", "fonts", "NanumGothic.ttf");
   let fontFilePart = "";
-  try {
-    await fs.access(fontAbsPath);
-    fontFilePart = `:fontfile='${fontAbsPath.replace(/\\/g, "/")}'`;
-  } catch {
-    console.warn("[render] Intro font not found:", fontAbsPath);
-  }
-
+  try { await fs.access(fontAbsPath); fontFilePart = `:fontfile='${fontAbsPath.replace(/\\/g, "/")}'`; } catch {}
   const safeText = escapeDrawtext(keyPhrase);
   const mainFwd = mainVideoFile.replace(/\\/g, "/");
   const introFwd = introFile.replace(/\\/g, "/");
-
-  // Video filter: scale → text overlay → fade in/out
   const vf = [
     `scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1`,
     `drawtext=text='${safeText}'${fontFilePart}:fontsize=52:fontcolor=white:x=(w-tw)/2:y=(h-th)/2:box=1:boxcolor=black@0.5:boxborderw=20`,
     `fade=t=in:st=0:d=1`,
     `fade=t=out:st=${INTRO_DURATION - 1}:d=1`,
   ].join(",");
-
-  let cmd: string;
-
-  // Check if music file actually exists (user may not have added MP3s yet)
   let useMusicFile = false;
   let musicFileFwd = "";
   if (introMusicId) {
     const musicAbsPath = path.join(process.cwd(), "public", "music", `${introMusicId}.mp3`);
-    try {
-      await fs.access(musicAbsPath);
-      musicFileFwd = musicAbsPath.replace(/\\/g, "/");
-      useMusicFile = true;
-    } catch {
-      console.warn(`[render] Music file not found: ${musicAbsPath}, using silence`);
-    }
+    try { await fs.access(musicAbsPath); musicFileFwd = musicAbsPath.replace(/\\/g, "/"); useMusicFile = true; } catch {}
   }
-
-  if (useMusicFile) {
-    cmd =
-      `${FFMPEG} -ss ${startSec.toFixed(3)} -t ${INTRO_DURATION} -i "${mainFwd}" -i "${musicFileFwd}"` +
-      ` -filter_complex "[0:v]${vf}[v];[1:a]atrim=0:${INTRO_DURATION},asetpts=PTS-STARTPTS,afade=t=out:st=${INTRO_DURATION - 2}:d=2[a]"` +
-      ` -map "[v]" -map "[a]" -c:v libx264 -c:a aac -pix_fmt yuv420p "${introFwd}" -y`;
-  } else {
-    // Silent audio via lavfi (no music file or file not found)
-    cmd =
-      `${FFMPEG} -ss ${startSec.toFixed(3)} -t ${INTRO_DURATION} -i "${mainFwd}" -f lavfi -i anullsrc=r=44100:cl=stereo` +
-      ` -filter_complex "[0:v]${vf}[v];[1:a]atrim=0:${INTRO_DURATION}[a]"` +
-      ` -map "[v]" -map "[a]" -c:v libx264 -c:a aac -pix_fmt yuv420p -t ${INTRO_DURATION} "${introFwd}" -y`;
-  }
-
+  const cmd = useMusicFile
+    ? `${FFMPEG} -ss ${startSec.toFixed(3)} -t ${INTRO_DURATION} -i "${mainFwd}" -i "${musicFileFwd}" -filter_complex "[0:v]${vf}[v];[1:a]atrim=0:${INTRO_DURATION},asetpts=PTS-STARTPTS,afade=t=out:st=${INTRO_DURATION - 2}:d=2[a]" -map "[v]" -map "[a]" -c:v libx264 -c:a aac -pix_fmt yuv420p "${introFwd}" -y`
+    : `${FFMPEG} -ss ${startSec.toFixed(3)} -t ${INTRO_DURATION} -i "${mainFwd}" -f lavfi -i anullsrc=r=44100:cl=stereo -filter_complex "[0:v]${vf}[v];[1:a]atrim=0:${INTRO_DURATION}[a]" -map "[v]" -map "[a]" -c:v libx264 -c:a aac -pix_fmt yuv420p -t ${INTRO_DURATION} "${introFwd}" -y`;
   await execAsync(cmd, { timeout: 120000, maxBuffer: 50 * 1024 * 1024 });
 }
 
-async function concatenateVideos({
-  introFile,
-  mainVideoFile,
-  outputFile,
-  FFMPEG,
-}: {
-  introFile: string;
-  mainVideoFile: string;
-  outputFile: string;
-  FFMPEG: string;
+async function concatenateVideos({ introFile, mainVideoFile, outputFile, FFMPEG }: {
+  introFile: string; mainVideoFile: string; outputFile: string; FFMPEG: string;
 }): Promise<void> {
-  const introFwd = introFile.replace(/\\/g, "/");
-  const mainFwd = mainVideoFile.replace(/\\/g, "/");
-  const outputFwd = outputFile.replace(/\\/g, "/");
-
-  // Resample both audio streams to 44100 Hz before concat —
-  // intro may be 44100 Hz while main video TTS audio could be any sample rate.
-  // FFmpeg's concat filter requires matching sample rates.
   const cmd =
-    `${FFMPEG} -i "${introFwd}" -i "${mainFwd}"` +
+    `${FFMPEG} -i "${introFile.replace(/\\/g, "/")}" -i "${mainVideoFile.replace(/\\/g, "/")}"` +
     ` -filter_complex "[0:a]aresample=44100[a0];[1:a]aresample=44100[a1];[0:v][a0][1:v][a1]concat=n=2:v=1:a=1[v][a]"` +
-    ` -map "[v]" -map "[a]" -c:v libx264 -c:a aac -pix_fmt yuv420p -movflags +faststart "${outputFwd}" -y`;
-
+    ` -map "[v]" -map "[a]" -c:v libx264 -c:a aac -pix_fmt yuv420p -movflags +faststart "${outputFile.replace(/\\/g, "/")}" -y`;
   await execAsync(cmd, { timeout: 300000, maxBuffer: 50 * 1024 * 1024 });
 }
