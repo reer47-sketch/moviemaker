@@ -87,7 +87,7 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
         return;
       }
       const items: MediaItem[] = data.imageUrls.map((url: string) => ({ url, type: "image" as const }));
-      syncUrls(items);
+      syncUrls([...mediaItems, ...items]);
     } catch (e) {
       console.error(e);
       setImageError("네트워크 오류가 발생했습니다");
@@ -113,7 +113,7 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
         return;
       }
       const items: MediaItem[] = data.clipUrls.map((url: string) => ({ url, type: "video" as const, name: "grok-clip" }));
-      syncUrls(items);
+      syncUrls([...mediaItems, ...items]);
     } catch (e) {
       console.error(e);
       setImageError("네트워크 오류가 발생했습니다");
