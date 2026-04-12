@@ -4,8 +4,10 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Mic, Loader2, ChevronRight, ChevronLeft, Play, Pause, Volume2, Save } from "lucide-react";
+import { Mic, Loader2, ChevronRight, ChevronLeft, Play, Pause, Volume2, Save, Coins } from "lucide-react";
 import type { VideoProject } from "@/app/create/page";
+import { createBrowserClient } from "@/lib/supabase";
+import { voiceCreditCost } from "@/lib/credits";
 
 type Props = {
   project: Partial<VideoProject>;
@@ -31,6 +33,7 @@ export function StepVoice({ project, updateProject, onNext, onPrev, onSave }: Pr
   const [loading, setLoading] = useState(false);
   const [audioUrl, setAudioUrl] = useState(project.audioUrl ?? "");
   const [playing, setPlaying] = useState(false);
+  const [creditError, setCreditError] = useState("");
 
   const proxyUrl = (url: string) =>
     url ? `/api/proxy?url=${encodeURIComponent(url)}` : "";
@@ -82,13 +85,21 @@ export function StepVoice({ project, updateProject, onNext, onPrev, onSave }: Pr
     setLoading(true);
     setPlaying(false);
     setProgress(0);
+    setCreditError("");
     try {
+      const supabase = createBrowserClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? "";
       const res = await fetch("/api/generate/voice", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ script: project.script, voiceId: selectedVoice }),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ script: project.script, voiceId: selectedVoice, duration: project.duration ?? "short" }),
       });
       const data = await res.json();
+      if (!res.ok) {
+        setCreditError(data.error ?? "오류가 발생했습니다");
+        return;
+      }
       setAudioUrl(data.audioUrl);
       updateProject({ audioUrl: data.audioUrl });
     } catch (e) {
@@ -155,17 +166,31 @@ export function StepVoice({ project, updateProject, onNext, onPrev, onSave }: Pr
         </div>
 
         {/* Generate Button */}
-        <Button
-          onClick={generateVoice}
-          disabled={loading || !project.script}
-          className="w-full gap-2 h-11"
-        >
-          {loading ? (
-            <><Loader2 className="w-4 h-4 animate-spin" /> 음성 생성 중...</>
-          ) : (
-            <><Mic className="w-4 h-4" /> {audioUrl ? "재생성" : "음성 생성하기"}</>
+        <div className="space-y-2">
+          <Button
+            onClick={generateVoice}
+            disabled={loading || !project.script}
+            className="w-full gap-2 h-11"
+          >
+            {loading ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> 음성 생성 중...</>
+            ) : (
+              <>
+                <Mic className="w-4 h-4" />
+                {audioUrl ? "재생성" : "음성 생성하기"}
+                <span className="ml-auto flex items-center gap-1 text-xs opacity-70">
+                  <Coins className="w-3 h-3" />
+                  {voiceCreditCost(project.duration ?? "short").toLocaleString()}
+                </span>
+              </>
+            )}
+          </Button>
+          {creditError && (
+            <div className="px-3 py-2 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive">
+              {creditError}
+            </div>
           )}
-        </Button>
+        </div>
 
         {/* Audio Player */}
         {audioUrl && (

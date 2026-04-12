@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase";
+import { deductCredits, CREDIT_COSTS } from "@/lib/credits";
 
 export const maxDuration = 300;
 
@@ -24,6 +25,10 @@ export async function POST(req: NextRequest) {
 
     // Limit to requested count (default: all scenes)
     const targetScenes = count ? scenes.slice(0, count) : scenes;
+
+    const cost = CREDIT_COSTS.videoClip * targetScenes.length;
+    const creditResult = await deductCredits(req, cost);
+    if (creditResult instanceof NextResponse) return creditResult;
     const supabase = createServiceClient();
 
     // Submit requests sequentially (rate limit: 1 req/sec)

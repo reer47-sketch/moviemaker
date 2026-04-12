@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase";
+import { deductCredits, voiceCreditCost } from "@/lib/credits";
 
 // ElevenLabs voice IDs
 const VOICE_MAP: Record<string, string> = {
@@ -13,11 +14,16 @@ const VOICE_MAP: Record<string, string> = {
 
 export async function POST(req: NextRequest) {
   try {
-    const { script, voiceId } = await req.json();
+    const body = await req.json();
+    const { script, voiceId, duration = "short" } = body;
 
     if (!script || !voiceId) {
       return NextResponse.json({ error: "스크립트와 목소리를 선택해주세요" }, { status: 400 });
     }
+
+    const cost = voiceCreditCost(duration);
+    const creditResult = await deductCredits(req, cost);
+    if (creditResult instanceof NextResponse) return creditResult;
 
     const elevenLabsVoiceId = VOICE_MAP[voiceId] ?? VOICE_MAP.brian;
     const apiKey = process.env.ELEVENLABS_API_KEY;

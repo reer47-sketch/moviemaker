@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { createServiceClient } from "@/lib/supabase";
+import { deductCredits, CREDIT_COSTS } from "@/lib/credits";
 
 export const maxDuration = 300;
 
@@ -59,6 +60,10 @@ export async function POST(req: NextRequest) {
     if (!scenes || scenes.length === 0) {
       return NextResponse.json({ error: "장면 정보가 필요합니다" }, { status: 400 });
     }
+
+    const cost = CREDIT_COSTS.image * scenes.length;
+    const creditResult = await deductCredits(req, cost);
+    if (creditResult instanceof NextResponse) return creditResult;
 
     // Generate images in parallel (max 3 at a time to avoid rate limits)
     const imageUrls: string[] = [];

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase";
+import { deductCredits, CREDIT_COSTS } from "@/lib/credits";
 import os from "os";
 import path from "path";
 import fs from "fs/promises";
@@ -70,6 +71,9 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+
+    const creditResult = await deductCredits(req, CREDIT_COSTS.subtitles);
+    if (creditResult instanceof NextResponse) return creditResult;
 
     const apiKey = process.env.ELEVENLABS_API_KEY;
     if (!apiKey) throw new Error("ELEVENLABS_API_KEY not set");

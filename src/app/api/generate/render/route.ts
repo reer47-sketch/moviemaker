@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase";
+import { deductCredits, CREDIT_COSTS } from "@/lib/credits";
 import os from "os";
 import path from "path";
 import fs from "fs/promises";
@@ -34,6 +35,9 @@ export async function POST(req: NextRequest) {
     if (!scenes || !audioUrl) {
       return NextResponse.json({ error: "필요한 데이터가 없습니다" }, { status: 400 });
     }
+
+    const creditResult = await deductCredits(req, CREDIT_COSTS.render);
+    if (creditResult instanceof NextResponse) return creditResult;
 
     const ffmpegInstaller = await import("@ffmpeg-installer/ffmpeg");
     const ffprobeInstaller = await import("@ffprobe-installer/ffprobe");

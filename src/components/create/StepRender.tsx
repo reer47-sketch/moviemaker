@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 import type { VideoProject } from "@/app/create/page";
 import { INTRO_MUSIC_OPTIONS } from "@/lib/introMusic";
+import { createBrowserClient } from "@/lib/supabase";
+import { CREDIT_COSTS } from "@/lib/credits";
 
 type SfxOption = { label: string; prompt: string; url: string };
 
@@ -57,6 +59,10 @@ export function StepRender({ project, updateProject, onNext, onPrev, onSave }: P
     setLoading(true);
     setProgress(0);
     setDone(false);
+    setErrorMsg("");
+
+    const { data: { session } } = await createBrowserClient().auth.getSession();
+    const token = session?.access_token ?? "";
 
     // Simulate progress
     for (let i = 0; i < RENDER_STEPS.length; i++) {
@@ -72,7 +78,7 @@ export function StepRender({ project, updateProject, onNext, onPrev, onSave }: P
     try {
       const res = await fetch("/api/generate/render", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           script: project.script,
           scenes: project.scenes,
@@ -349,6 +355,7 @@ export function StepRender({ project, updateProject, onNext, onPrev, onSave }: P
           <Button onClick={startRender} className="w-full gap-2 h-11">
             <Clapperboard className="w-4 h-4" />
             영상 렌더링 시작
+            <span className="ml-auto text-xs opacity-70">{CREDIT_COSTS.render} 크레딧</span>
           </Button>
         )}
 

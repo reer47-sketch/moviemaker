@@ -18,15 +18,16 @@ export type DurationOption = {
   id: string;
   label: string;
   sub: string;
-  targetWords: number;
+  targetCharsKo: number; // Korean characters (~320 chars/min for ElevenLabs TTS)
+  targetWordsEn: number; // English words (~130 words/min)
   minScenes: number;
   maxScenes: number;
 };
 
 export const DURATION_OPTIONS: DurationOption[] = [
-  { id: "short", label: "숏폼",  sub: "1분 이내",  targetWords: 200,  minScenes: 3,  maxScenes: 5  },
-  { id: "2min",  label: "2분",   sub: "롱폼",      targetWords: 350,  minScenes: 6,  maxScenes: 8  },
-  { id: "3min",  label: "3분",   sub: "롱폼",      targetWords: 550,  minScenes: 10, maxScenes: 13 },
-  { id: "5min",  label: "5분",   sub: "롱폼",      targetWords: 900,  minScenes: 18, maxScenes: 22 },
-  { id: "10min", label: "10분",  sub: "롱폼",      targetWords: 1700, minScenes: 35, maxScenes: 42 },
+  { id: "short", label: "숏폼",  sub: "1분 이내",  targetCharsKo: 250,  targetWordsEn: 110,  minScenes: 3,  maxScenes: 4  },
+  { id: "2min",  label: "2분",   sub: "롱폼",      targetCharsKo: 600,  targetWordsEn: 260,  minScenes: 5,  maxScenes: 7  },
+  { id: "3min",  label: "3분",   sub: "롱폼",      targetCharsKo: 900,  targetWordsEn: 390,  minScenes: 8,  maxScenes: 11 },
+  { id: "5min",  label: "5분",   sub: "롱폼",      targetCharsKo: 1500, targetWordsEn: 640,  minScenes: 14, maxScenes: 18 },
+  { id: "10min", label: "10분",  sub: "롱폼",      targetCharsKo: 3000, targetWordsEn: 1280, minScenes: 28, maxScenes: 36 },
 ];

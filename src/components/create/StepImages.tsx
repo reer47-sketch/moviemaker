@@ -11,6 +11,8 @@ import {
   AlertTriangle, CheckCircle2, GripVertical, ChevronUp, ChevronDown, Save,
 } from "lucide-react";
 import type { VideoProject } from "@/app/create/page";
+import { createBrowserClient } from "@/lib/supabase";
+import { CREDIT_COSTS } from "@/lib/credits";
 
 type Props = {
   project: Partial<VideoProject>;
@@ -71,15 +73,21 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
     setDragOverIdx(null);
   };
 
+  const getToken = async () => {
+    const { data: { session } } = await createBrowserClient().auth.getSession();
+    return session?.access_token ?? "";
+  };
+
   /* ── AI 생성 ── */
   const generateImages = async () => {
     setLoading(true);
     setImageError("");
     const targetScenes = genCount === "all" ? project.scenes : project.scenes?.slice(0, genCount);
     try {
+      const token = await getToken();
       const res = await fetch("/api/generate/images", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ scenes: targetScenes }),
       });
       const data = await res.json();
@@ -97,15 +105,15 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
     }
   };
 
-
   const generateVideoClips = async () => {
     setVideoLoading(true);
     setImageError("");
     const count = genCount === "all" ? undefined : genCount;
     try {
+      const token = await getToken();
       const res = await fetch("/api/generate/video-clips", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ scenes: project.scenes, count }),
       });
       const data = await res.json();
@@ -126,9 +134,10 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
   const regenerateImage = async (idx: number) => {
     setRegeneratingIdx(idx);
     try {
+      const token = await getToken();
       const res = await fetch("/api/generate/images", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ scenes: [project.scenes?.[idx]], single: true }),
       });
       const data = await res.json();
@@ -305,7 +314,12 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
                     {loading ? (
                       <><Loader2 className="w-4 h-4 animate-spin" /> 생성 중 ({genCount === "all" ? scenes.length : genCount}개)...</>
                     ) : (
-                      <><Sparkles className="w-4 h-4" /> AI 이미지 생성하기</>
+                      <>
+                        <Sparkles className="w-4 h-4" /> AI 이미지 생성하기
+                        <span className="ml-auto text-xs opacity-70">
+                          {(CREDIT_COSTS.image * (genCount === "all" ? scenes.length : genCount)).toLocaleString()} 크레딧
+                        </span>
+                      </>
                     )}
                   </Button>
                 ) : (
@@ -318,7 +332,12 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
                     {videoLoading ? (
                       <><Loader2 className="w-4 h-4 animate-spin" /> 영상 클립 생성 중... (수분 소요)</>
                     ) : (
-                      <><Video className="w-4 h-4" /> Grok 영상 클립 생성하기</>
+                      <>
+                        <Video className="w-4 h-4" /> Grok 영상 클립 생성하기
+                        <span className="ml-auto text-xs opacity-70">
+                          {(CREDIT_COSTS.videoClip * (genCount === "all" ? scenes.length : genCount)).toLocaleString()} 크레딧
+                        </span>
+                      </>
                     )}
                   </Button>
                 )}

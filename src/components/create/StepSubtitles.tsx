@@ -5,8 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
-import { Captions, Loader2, ChevronRight, ChevronLeft, CheckCircle, Type, Save } from "lucide-react";
+import { Captions, Loader2, ChevronRight, ChevronLeft, CheckCircle, Type, Save, Coins } from "lucide-react";
 import type { VideoProject } from "@/app/create/page";
+import { createBrowserClient } from "@/lib/supabase";
+import { CREDIT_COSTS } from "@/lib/credits";
 
 type Props = {
   project: Partial<VideoProject>;
@@ -49,9 +51,11 @@ export function StepSubtitles({ project, updateProject, onNext, onPrev, onSave }
     setLoading(true);
     setErrorMsg("");
     try {
+      const { data: { session } } = await createBrowserClient().auth.getSession();
+      const token = session?.access_token ?? "";
       const res = await fetch("/api/generate/subtitles", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           audioUrl: project.audioUrl,
           videoUrl: project.videoUrl,
@@ -172,7 +176,12 @@ export function StepSubtitles({ project, updateProject, onNext, onPrev, onSave }
           {loading ? (
             <><Loader2 className="w-4 h-4 animate-spin" /> 자막 생성 중...</>
           ) : (
-            <><Type className="w-4 h-4" /> 자막 생성하기</>
+            <>
+              <Type className="w-4 h-4" /> 자막 생성하기
+              <span className="ml-auto flex items-center gap-1 text-xs opacity-70">
+                <Coins className="w-3 h-3" />{CREDIT_COSTS.subtitles}
+              </span>
+            </>
           )}
         </Button>
 

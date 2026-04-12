@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
 
 Requirements:
 - ${dur.minScenes}–${dur.maxScenes} scenes total
-- Full script ~${dur.targetWords} words (${dur.label})
+- Full script ~${dur.targetWordsEn} words (${dur.label}, must be long enough to fill the full duration when read aloud)
 - Each scene has a clear focus
 - Write in English
 - Engaging, compelling content
@@ -31,7 +31,7 @@ Requirements:
 
 요구사항:
 - 총 ${dur.minScenes}~${dur.maxScenes}개 장면으로 구성
-- 전체 스크립트는 약 ${dur.targetWords}자 (${dur.label} 분량)
+- 전체 스크립트는 약 ${dur.targetCharsKo}자 (${dur.label} 분량, TTS 낭독 기준 실제 ${dur.label}에 맞춰 충분히 작성할 것)
 - 각 장면은 명확한 주제를 가짐
 - 한국어로 작성
 - 흥미롭고 시청자를 사로잡는 내용
@@ -40,7 +40,7 @@ Requirements:
 
     const message = await client.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: isShort ? 1500 : duration === "10min" ? 6000 : 3500,
+      max_tokens: isShort ? 1500 : duration === "10min" ? 8000 : duration === "5min" ? 5000 : 3500,
       tools: [
         {
           name: "create_video_script",
