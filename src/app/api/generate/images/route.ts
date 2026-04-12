@@ -10,7 +10,7 @@ const imageClient = useXai
   ? new OpenAI({ apiKey: process.env.XAI_API_KEY, baseURL: "https://api.x.ai/v1" })
   : new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const IMAGE_MODEL = useXai ? "grok-2-image" : "dall-e-3";
-const IMAGE_SIZE = useXai ? "1280x720" : "1792x1024";
+const IMAGE_SIZE = "1792x1024";
 
 type Scene = { title: string; content: string; imagePrompt?: string };
 
@@ -29,12 +29,10 @@ Requirements:
 - No text, no captions, no watermarks
 - 16:9 widescreen composition`;
 
-  const response = await imageClient.images.generate({
-    model: IMAGE_MODEL,
-    prompt,
-    n: 1,
-    size: IMAGE_SIZE as "1792x1024",
-  });
+  const generateParams = useXai
+    ? { model: IMAGE_MODEL, prompt, n: 1 }
+    : { model: IMAGE_MODEL, prompt, n: 1, size: IMAGE_SIZE as "1792x1024", quality: "standard" as const };
+  const response = await imageClient.images.generate(generateParams);
 
   const imageUrl = response.data?.[0]?.url;
   if (!imageUrl) throw new Error("No image URL returned from DALL-E");
