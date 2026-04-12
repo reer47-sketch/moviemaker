@@ -3,10 +3,12 @@ import { createServiceClient } from "@/lib/supabase";
 
 // ElevenLabs voice IDs
 const VOICE_MAP: Record<string, string> = {
-  rachel:  "21m00Tcm4TlvDq8ikWAM", // 자연스럽고 따뜻한 여성
-  adam:    "pNInz6obpgDQGcFmaJgB", // 차분하고 신뢰감 있는 남성
-  bella:   "EXAVITQu4vr4xnSDxMaL", // 밝고 활기찬 여성
-  antoni:  "ErXwobaYiN019PkySvjV", // 젊고 에너지 넘치는 남성
+  brian:   "nPczCjzI2devNBz1zQrb", // 깊고 안정적인 남성
+  george:  "JBFqnCBsd6RMkjVDRZzb", // 따뜻한 스토리텔러 남성
+  eric:    "cjVigY5qzO86Huf0OWal", // 부드럽고 신뢰감 있는 남성
+  sarah:   "EXAVITQu4vr4xnSDxMaL", // 성숙하고 신뢰감 있는 여성
+  jessica: "cgSgspJ2msm6clMCkdW9", // 밝고 활기찬 여성
+  matilda: "XrExE9yKIg1WjnnlVkGX", // 전문적이고 지식감 있는 여성
 };
 
 export async function POST(req: NextRequest) {
@@ -17,7 +19,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "스크립트와 목소리를 선택해주세요" }, { status: 400 });
     }
 
-    const elevenLabsVoiceId = VOICE_MAP[voiceId] ?? VOICE_MAP.rachel;
+    const elevenLabsVoiceId = VOICE_MAP[voiceId] ?? VOICE_MAP.brian;
     const apiKey = process.env.ELEVENLABS_API_KEY;
     if (!apiKey) throw new Error("ELEVENLABS_API_KEY is not set");
 

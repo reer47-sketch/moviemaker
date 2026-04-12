@@ -16,10 +16,12 @@ type Props = {
 };
 
 const VOICES = [
-  { id: "rachel",  name: "Rachel",  desc: "자연스럽고 따뜻한 여성 목소리", gender: "여성" },
-  { id: "adam",    name: "Adam",    desc: "차분하고 신뢰감 있는 남성 목소리", gender: "남성" },
-  { id: "bella",   name: "Bella",   desc: "밝고 활기찬 여성 목소리", gender: "여성" },
-  { id: "antoni",  name: "Antoni",  desc: "젊고 에너지 넘치는 남성 목소리", gender: "남성" },
+  { id: "brian",   name: "Brian",   desc: "깊고 안정적인 남성 목소리",          gender: "남성" },
+  { id: "george",  name: "George",  desc: "따뜻하고 설득력 있는 스토리텔러",    gender: "남성" },
+  { id: "eric",    name: "Eric",    desc: "부드럽고 신뢰감 있는 남성 목소리",   gender: "남성" },
+  { id: "sarah",   name: "Sarah",   desc: "성숙하고 안정감 있는 여성 목소리",   gender: "여성" },
+  { id: "jessica", name: "Jessica", desc: "밝고 활기차며 친근한 여성 목소리",   gender: "여성" },
+  { id: "matilda", name: "Matilda", desc: "전문적이고 지식감 있는 여성 목소리", gender: "여성" },
 ];
 
 export function StepVoice({ project, updateProject, onNext, onPrev, onSave }: Props) {
@@ -120,7 +122,7 @@ export function StepVoice({ project, updateProject, onNext, onPrev, onSave }: Pr
         {/* Voice Selection */}
         <div className="space-y-3">
           <label className="text-sm font-medium">목소리 선택</label>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {VOICES.map((voice) => (
               <button
                 key={voice.id}
