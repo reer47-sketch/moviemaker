@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import OpenAI from "openai";
 import { createServiceClient } from "@/lib/supabase";
 import os from "os";
 import path from "path";
@@ -8,45 +7,53 @@ import { exec } from "child_process";
 import { promisify } from "util";
 
 const execAsync = promisify(exec);
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export const maxDuration = 300;
 
 type SubtitleEntry = { start: number; end: number; text: string };
+type ElevenLabsWord = { text: string; start: number; end: number; type: string };
 
 function splitIntoSentences(script: string): string[] {
-  // Split on sentence-ending punctuation followed by whitespace or end-of-string
   return script
     .split(/(?<=[.!?])\s+|(?<=[.!?])$/)
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
 }
 
-function mapScriptToSentences(
+/** Map script sentences to real word timestamps from ElevenLabs STT */
+function mapScriptToWordTimestamps(
   script: string,
-  whisperSegs: { start: number; end: number }[]
+  words: ElevenLabsWord[]
 ): SubtitleEntry[] {
-  if (!whisperSegs.length) return [];
+  // Only use actual spoken words (skip spacing/audio_event tokens)
+  const spokenWords = words.filter((w) => w.type === "word" && w.start != null);
+  if (!spokenWords.length) return [];
 
   const sentences = splitIntoSentences(script);
   if (!sentences.length) return [];
 
-  const audioStart = whisperSegs[0].start;
-  const audioEnd = whisperSegs[whisperSegs.length - 1].end;
-  const totalDuration = audioEnd - audioStart;
-
-  // Use character count proportion to assign timestamps
   const totalChars = script.replace(/\s+/g, "").length;
   let charAccum = 0;
 
   return sentences.map((sentence) => {
     const sentenceChars = sentence.replace(/\s+/g, "").length;
-    const start = audioStart + (charAccum / totalChars) * totalDuration;
+    const startRatio = charAccum / totalChars;
     charAccum += sentenceChars;
-    const end = audioStart + (charAccum / totalChars) * totalDuration;
+    const endRatio = Math.min(charAccum / totalChars, 1);
+
+    // Map character ratios → word index range
+    const startIdx = Math.floor(startRatio * spokenWords.length);
+    const endIdx = Math.min(
+      Math.ceil(endRatio * spokenWords.length) - 1,
+      spokenWords.length - 1
+    );
+
+    const startWord = spokenWords[Math.max(startIdx, 0)];
+    const endWord = spokenWords[Math.max(endIdx, 0)];
+
     return {
-      start: Math.round(start * 1000) / 1000,
-      end: Math.round(end * 1000) / 1000,
+      start: Math.round(startWord.start * 1000) / 1000,
+      end: Math.round(endWord.end * 1000) / 1000,
       text: sentence,
     };
   });
@@ -64,24 +71,35 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const apiKey = process.env.ELEVENLABS_API_KEY;
+    if (!apiKey) throw new Error("ELEVENLABS_API_KEY not set");
+
+    // Download audio
     const audioRes = await fetch(audioUrl);
     const audioBuffer = await audioRes.arrayBuffer();
-    const audioFile = new File([audioBuffer], "audio.mp3", { type: "audio/mpeg" });
 
-    const transcription = await openai.audio.transcriptions.create({
-      file: audioFile,
-      model: "whisper-1",
-      language: language === "en" ? "en" : "ko",
-      response_format: "verbose_json",
-      timestamp_granularities: ["segment"],
+    // Call ElevenLabs STT (scribe_v1) — returns word-level timestamps
+    const formData = new FormData();
+    formData.append("audio", new Blob([audioBuffer], { type: "audio/mpeg" }), "audio.mp3");
+    formData.append("model_id", "scribe_v1");
+    if (language === "en") formData.append("language_code", "en");
+    else formData.append("language_code", "ko");
+
+    const sttRes = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
+      method: "POST",
+      headers: { "xi-api-key": apiKey },
+      body: formData,
     });
 
-    const whisperSegs = (transcription.segments ?? []).map((s) => ({
-      start: s.start,
-      end: s.end,
-    }));
+    if (!sttRes.ok) {
+      const err = await sttRes.text();
+      throw new Error(`ElevenLabs STT error: ${sttRes.status} ${err}`);
+    }
 
-    if (!whisperSegs.length) {
+    const sttData = await sttRes.json() as { text: string; words: ElevenLabsWord[] };
+    const words = sttData.words ?? [];
+
+    if (!words.length) {
       return NextResponse.json(
         { error: "음성 타이밍을 분석할 수 없습니다. 오디오를 확인해주세요." },
         { status: 422 }
@@ -89,15 +107,14 @@ export async function POST(req: NextRequest) {
     }
 
     const subtitles: SubtitleEntry[] = script
-      ? mapScriptToSentences(script, whisperSegs)
-      : whisperSegs.map((s, i) => ({
-          ...s,
-          text: (transcription.segments ?? [])[i]?.text?.trim() ?? "",
-        }));
+      ? mapScriptToWordTimestamps(script, words)
+      : words
+          .filter((w) => w.type === "word")
+          .map((w) => ({ start: w.start, end: w.end, text: w.text }));
 
     // Offset timestamps when intro was prepended to the video
     const finalSubtitles = introOffset > 0
-      ? subtitles.map(s => ({ ...s, start: s.start + introOffset, end: s.end + introOffset }))
+      ? subtitles.map((s) => ({ ...s, start: s.start + introOffset, end: s.end + introOffset }))
       : subtitles;
 
     const subtitledVideoUrl = await burnSubtitles(videoUrl, finalSubtitles, {
@@ -116,24 +133,16 @@ export async function POST(req: NextRequest) {
   }
 }
 
-/**
- * Escape text for FFmpeg drawtext `text=` option value.
- * The value is single-quoted inside the filter string, which itself is
- * double-quoted when passed to the shell via exec().
- * Two escaping layers apply:
- *   1. Shell (double-quote context): \  "  $  `  must be backslash-escaped
- *   2. FFmpeg filter parser (single-quote context): '  :  {  }  must be escaped
- */
 function escapeDrawtext(t: string): string {
   return t
-    .replace(/\\/g, "\\\\")  // 1. backslash (must be first)
-    .replace(/\$/g, "\\$")   // 2. dollar sign  — shell variable expansion
-    .replace(/`/g, "\\`")    // 3. backtick     — shell command substitution
-    .replace(/"/g, '\\"')    // 4. double quote — would close the outer "-vf "..." shell arg
-    .replace(/'/g, "\u2019") // 5. single quote — replace with right curly quote (can't escape inside text='...')
-    .replace(/:/g, "\\:")    // 6. colon        — FFmpeg option separator
-    .replace(/\{/g, "\\{")   // 7. open brace   — FFmpeg drawtext expansion
-    .replace(/\}/g, "\\}");  // 8. close brace
+    .replace(/\\/g, "\\\\")
+    .replace(/\$/g, "\\$")
+    .replace(/`/g, "\\`")
+    .replace(/"/g, '\\"')
+    .replace(/'/g, "\u2019")
+    .replace(/:/g, "\\:")
+    .replace(/\{/g, "\\{")
+    .replace(/\}/g, "\\}");
 }
 
 async function burnSubtitles(
@@ -146,34 +155,27 @@ async function burnSubtitles(
 
   const tmpDir = os.tmpdir();
   const ts = Date.now();
-  // Use forward-slash paths to avoid Windows backslash issues in FFmpeg args
   const tempVideo = path.join(tmpDir, `input-${ts}.mp4`).replace(/\\/g, "/");
   const outputVideo = path.join(tmpDir, `subtitled-${ts}.mp4`).replace(/\\/g, "/");
 
   try {
-    // Download video
     const videoRes = await fetch(videoUrl);
     if (!videoRes.ok) throw new Error(`비디오 다운로드 실패: ${videoRes.status}`);
     await fs.writeFile(tempVideo, Buffer.from(await videoRes.arrayBuffer()));
 
     const { style, fontSize } = options;
 
-    // Resolve Korean font (bundled in public/fonts/)
     const fontAbsPath = path.join(process.cwd(), "public", "fonts", "NanumGothic.ttf");
     let fontFilePart = "";
     try {
       await fs.access(fontAbsPath);
-      // forward-slash path; no colon escaping needed inside single-quoted filter values
       fontFilePart = `:fontfile='${fontAbsPath.replace(/\\/g, "/")}'`;
-      console.log("[subtitles] Using font:", fontAbsPath);
     } catch {
-      console.warn("[subtitles] Font not found, using system default:", fontAbsPath);
+      console.warn("[subtitles] Font not found, using system default");
     }
 
     const fontcolor = style === "yellow" ? "yellow" : "white";
 
-    // Build one drawtext filter per subtitle.
-    // Using text= directly (not textfile=) avoids temp-file path issues on Windows.
     const filters = subtitles.map((sub) => {
       const safeText = escapeDrawtext(sub.text);
       const ts0 = sub.start.toFixed(3);
@@ -201,14 +203,13 @@ async function burnSubtitles(
       `${FFMPEG} -i "${tempVideo}" -vf "${vf}" ` +
       `-c:v libx264 -c:a copy -pix_fmt yuv420p -movflags +faststart "${outputVideo}" -y`;
 
-    console.log("[subtitles] FFmpeg: subtitle count =", subtitles.length);
+    console.log("[subtitles] ElevenLabs STT, subtitle count =", subtitles.length);
     const { stderr } = await execAsync(cmd, {
       timeout: 180000,
       maxBuffer: 50 * 1024 * 1024,
     });
     if (stderr) console.log("[subtitles] FFmpeg stderr (tail):", stderr.slice(-800));
 
-    // Upload to Supabase
     const supabase = createServiceClient();
     const outputBuffer = await fs.readFile(outputVideo);
     const fileName = `videos/subtitled-${ts}.mp4`;
