@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
 
     // Call ElevenLabs STT (scribe_v1) — returns word-level timestamps
     const formData = new FormData();
-    formData.append("audio", new Blob([audioBuffer], { type: "audio/mpeg" }), "audio.mp3");
+    formData.append("file", new Blob([audioBuffer], { type: "audio/mpeg" }), "audio.mp3");
     formData.append("model_id", "scribe_v1");
     if (language === "en") formData.append("language_code", "en");
     else formData.append("language_code", "ko");
