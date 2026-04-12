@@ -130,7 +130,18 @@ export function StepRender({ project, updateProject, onNext, onPrev, onSave }: P
           {[
             { label: "스크립트", value: `${project.scenes?.length ?? 0}장면`, ok: !!project.script },
             { label: "음성", value: "준비됨", ok: !!project.audioUrl },
-            { label: "이미지", value: `${project.imageUrls?.length ?? 0}개`, ok: (project.imageUrls?.length ?? 0) > 0 },
+            {
+              label: "미디어",
+              value: (() => {
+                const types = project.mediaTypes ?? [];
+                const imgs = types.filter(t => t !== "video").length || (project.imageUrls?.length ?? 0);
+                const vids = types.filter(t => t === "video").length;
+                return types.length > 0
+                  ? (vids > 0 ? `이미지 ${imgs}개·영상 ${vids}개` : `${imgs}개`)
+                  : `${project.imageUrls?.length ?? 0}개`;
+              })(),
+              ok: (project.imageUrls?.length ?? 0) > 0,
+            },
           ].map((item) => (
             <div key={item.label} className={`p-3 rounded-xl border text-center ${item.ok ? "bg-emerald-500/5 border-emerald-500/20" : "bg-muted/50 border-border/30"}`}>
               <div className="text-xs text-muted-foreground mb-1">{item.label}</div>

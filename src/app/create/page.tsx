@@ -24,6 +24,7 @@ export type VideoProject = {
   scenes: { title: string; content: string; imagePrompt?: string; sceneType?: "image" | "slide" }[];
   audioUrl: string;
   imageUrls: string[];
+  mediaTypes: string[];  // "image" | "video" per url, parallel to imageUrls
   videoUrl: string;
   subtitledVideoUrl: string;
   // New fields

@@ -43,7 +43,8 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
 
   const syncUrls = (items: MediaItem[]) => {
     const urls = items.map((m) => m.url);
-    updateProject({ imageUrls: urls });
+    const types = items.map((m) => m.type);
+    updateProject({ imageUrls: urls, mediaTypes: types });
     setMediaItems(items);
   };
 
