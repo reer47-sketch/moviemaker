@@ -2,9 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { createServiceClient } from "@/lib/supabase";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
 export const maxDuration = 300;
+
+// Use xAI Aurora if XAI_API_KEY is set, otherwise fall back to DALL-E 3
+const useXai = !!process.env.XAI_API_KEY;
+const imageClient = useXai
+  ? new OpenAI({ apiKey: process.env.XAI_API_KEY, baseURL: "https://api.x.ai/v1" })
+  : new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const IMAGE_MODEL = useXai ? "grok-2-image" : "dall-e-3";
+const IMAGE_SIZE = useXai ? "1280x720" : "1792x1024";
 
 type Scene = { title: string; content: string; imagePrompt?: string };
 
@@ -23,12 +29,11 @@ Requirements:
 - No text, no captions, no watermarks
 - 16:9 widescreen composition`;
 
-  const response = await openai.images.generate({
-    model: "dall-e-3",
+  const response = await imageClient.images.generate({
+    model: IMAGE_MODEL,
     prompt,
     n: 1,
-    size: "1792x1024",
-    quality: "standard",
+    size: IMAGE_SIZE as "1792x1024",
   });
 
   const imageUrl = response.data?.[0]?.url;
