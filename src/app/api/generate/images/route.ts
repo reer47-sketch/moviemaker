@@ -4,6 +4,8 @@ import { createServiceClient } from "@/lib/supabase";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+export const maxDuration = 300;
+
 type Scene = { title: string; content: string; imagePrompt?: string };
 
 async function generateAndUploadImage(scene: Scene): Promise<string> {
@@ -49,7 +51,7 @@ Requirements:
 
 export async function POST(req: NextRequest) {
   try {
-    const { scenes, single } = await req.json();
+    const { scenes } = await req.json();
 
     if (!scenes || scenes.length === 0) {
       return NextResponse.json({ error: "장면 정보가 필요합니다" }, { status: 400 });
@@ -69,7 +71,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error("Image generation error:", error);
     return NextResponse.json(
-      { error: "이미지 생성 중 오류가 발생했습니다" },
+      { error: "이미지 생성 중 오류가 발생했습니다", detail: String(error) },
       { status: 500 }
     );
   }

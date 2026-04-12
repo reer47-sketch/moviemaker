@@ -26,6 +26,7 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
   const [justSaved, setJustSaved] = useState(false);
   const handleSave = () => { onSave(); setJustSaved(true); setTimeout(() => setJustSaved(false), 2000); };
   const [loading, setLoading] = useState(false);
+  const [imageError, setImageError] = useState("");
   const [mediaItems, setMediaItems] = useState<MediaItem[]>(
     (project.imageUrls ?? []).map((url) => ({ url, type: "image" as const }))
   );
@@ -69,6 +70,7 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
   /* ── AI 생성 ── */
   const generateImages = async () => {
     setLoading(true);
+    setImageError("");
     try {
       const res = await fetch("/api/generate/images", {
         method: "POST",
@@ -76,10 +78,15 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
         body: JSON.stringify({ scenes: project.scenes }),
       });
       const data = await res.json();
+      if (!res.ok || !data.imageUrls) {
+        setImageError((data.error ?? "이미지 생성 실패") + (data.detail ? ` — ${data.detail}` : ""));
+        return;
+      }
       const items: MediaItem[] = data.imageUrls.map((url: string) => ({ url, type: "image" as const }));
       syncUrls(items);
     } catch (e) {
       console.error(e);
+      setImageError("네트워크 오류가 발생했습니다");
     } finally {
       setLoading(false);
     }
@@ -184,6 +191,11 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
                     총 <span className="text-foreground font-medium">{scenes.length}개</span> 장면에 대한 이미지가 생성됩니다
                   </span>
                 </div>
+                {imageError && (
+                  <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-4 py-3">
+                    {imageError}
+                  </div>
+                )}
                 <Button
                   onClick={generateImages}
                   disabled={loading || scenes.length === 0}
