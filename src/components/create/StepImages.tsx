@@ -28,6 +28,7 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
   const [loading, setLoading] = useState(false);
   const [imageError, setImageError] = useState("");
   const [genMode, setGenMode] = useState<"image" | "video">("image");
+  const [genCount, setGenCount] = useState<number | "all">("all");
   const [videoLoading, setVideoLoading] = useState(false);
   const [mediaItems, setMediaItems] = useState<MediaItem[]>(
     (project.imageUrls ?? []).map((url) => ({ url, type: "image" as const }))
@@ -73,11 +74,12 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
   const generateImages = async () => {
     setLoading(true);
     setImageError("");
+    const targetScenes = genCount === "all" ? project.scenes : project.scenes?.slice(0, genCount);
     try {
       const res = await fetch("/api/generate/images", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scenes: project.scenes }),
+        body: JSON.stringify({ scenes: targetScenes }),
       });
       const data = await res.json();
       if (!res.ok || !data.imageUrls) {
@@ -98,11 +100,12 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
   const generateVideoClips = async () => {
     setVideoLoading(true);
     setImageError("");
+    const count = genCount === "all" ? undefined : genCount;
     try {
       const res = await fetch("/api/generate/video-clips", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scenes: project.scenes }),
+        body: JSON.stringify({ scenes: project.scenes, count }),
       });
       const data = await res.json();
       if (!res.ok || !data.clipUrls) {
@@ -231,16 +234,56 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
                   </button>
                 </div>
 
+                {/* Count selector */}
+                {scenes.length > 0 && (
+                  <div>
+                    <div className="text-xs text-muted-foreground mb-1.5">생성 개수</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {Array.from({ length: scenes.length }, (_, i) => i + 1).map((n) => (
+                        <button
+                          key={n}
+                          onClick={() => setGenCount(n)}
+                          className={`px-2.5 py-1 rounded-lg border text-xs font-medium transition-colors ${
+                            genCount === n
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border/50 hover:border-border"
+                          }`}
+                        >
+                          {n}개
+                          {genMode === "video" && (
+                            <span className="text-amber-400 ml-1">${(n * 0.4).toFixed(1)}</span>
+                          )}
+                        </button>
+                      ))}
+                      <button
+                        onClick={() => setGenCount("all")}
+                        className={`px-2.5 py-1 rounded-lg border text-xs font-medium transition-colors ${
+                          genCount === "all"
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border/50 hover:border-border"
+                        }`}
+                      >
+                        전체 ({scenes.length}개)
+                        {genMode === "video" && (
+                          <span className="text-amber-400 ml-1">${(scenes.length * 0.4).toFixed(1)}</span>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/50 border border-border/30">
                   {genMode === "image" ? (
                     <><ImageIcon className="w-4 h-4 text-muted-foreground shrink-0" />
                     <span className="text-sm text-muted-foreground">
-                      Grok Aurora — 총 <span className="text-foreground font-medium">{scenes.length}개</span> 장면 이미지 생성
+                      Grok Aurora — <span className="text-foreground font-medium">{genCount === "all" ? scenes.length : genCount}개</span> 이미지 생성
                     </span></>
                   ) : (
                     <><Video className="w-4 h-4 text-muted-foreground shrink-0" />
                     <span className="text-sm text-muted-foreground">
-                      Grok Video — 장면당 8초 영상 클립 생성 <span className="text-amber-400 font-medium">(장면당 약 $0.40)</span>
+                      Grok Video — 클립당 8초 <span className="text-amber-400 font-medium">
+                        (예상 비용: ${((genCount === "all" ? scenes.length : genCount) * 0.4).toFixed(1)})
+                      </span>
                     </span></>
                   )}
                 </div>

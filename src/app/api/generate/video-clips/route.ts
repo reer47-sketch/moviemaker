@@ -7,66 +7,64 @@ const XAI_KEY = process.env.XAI_API_KEY ?? "";
 const POLL_INTERVAL_MS = 5000;
 const MAX_POLLS = 50; // 50 × 5s = 250s max
 
-async function generateVideoClip(prompt: string): Promise<string> {
-  // Step 1: Create generation request
-  const res = await fetch("https://api.x.ai/v1/videos/generations", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${XAI_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ model: "grok-imagine-video", prompt, n: 1 }),
-  });
-
-  if (!res.ok) throw new Error(`xAI video create error: ${res.status} ${await res.text()}`);
-  const { request_id } = await res.json() as { request_id: string };
-
-  // Step 2: Poll until done
-  for (let i = 0; i < MAX_POLLS; i++) {
-    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-
-    const poll = await fetch(`https://api.x.ai/v1/videos/${request_id}`, {
-      headers: { Authorization: `Bearer ${XAI_KEY}` },
-    });
-
-    if (!poll.ok) throw new Error(`xAI video poll error: ${poll.status}`);
-    const data = await poll.json() as { status: string; video?: { url: string } };
-
-    if (data.status === "done" && data.video?.url) {
-      return data.video.url;
-    }
-    // status === "pending" → keep polling
-  }
-
-  throw new Error("xAI video generation timed out");
-}
-
 export async function POST(req: NextRequest) {
   if (!XAI_KEY) {
     return NextResponse.json({ error: "XAI_API_KEY가 설정되지 않았습니다" }, { status: 500 });
   }
 
   try {
-    const { scenes } = await req.json() as {
+    const { scenes, count } = await req.json() as {
       scenes: { title: string; content: string; imagePrompt?: string }[];
+      count?: number;
     };
 
     if (!scenes?.length) {
       return NextResponse.json({ error: "장면 정보가 필요합니다" }, { status: 400 });
     }
 
+    // Limit to requested count (default: all scenes)
+    const targetScenes = count ? scenes.slice(0, count) : scenes;
     const supabase = createServiceClient();
 
-    // Generate all clips in parallel
+    // Submit requests sequentially (rate limit: 1 req/sec)
+    const requestIds: string[] = [];
+    for (const scene of targetScenes) {
+      const prompt = scene.imagePrompt?.trim()
+        ? scene.imagePrompt
+        : `${scene.title}: ${scene.content.slice(0, 120)}. Cinematic, photorealistic, smooth motion.`;
+
+      const res = await fetch("https://api.x.ai/v1/videos/generations", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${XAI_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "grok-imagine-video", prompt, n: 1 }),
+      });
+      if (!res.ok) throw new Error(`xAI video create error: ${res.status} ${await res.text()}`);
+      const { request_id } = await res.json() as { request_id: string };
+      requestIds.push(request_id);
+
+      // Respect 1 req/sec rate limit
+      await new Promise((r) => setTimeout(r, 1200));
+    }
+
+    // Poll all requests in parallel until done
+    const xaiUrls = await Promise.all(
+      requestIds.map(async (request_id) => {
+        for (let i = 0; i < MAX_POLLS; i++) {
+          await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+          const poll = await fetch(`https://api.x.ai/v1/videos/${request_id}`, {
+            headers: { Authorization: `Bearer ${XAI_KEY}` },
+          });
+          if (!poll.ok) throw new Error(`xAI video poll error: ${poll.status}`);
+          const data = await poll.json() as { status: string; video?: { url: string } };
+          if (data.status === "done" && data.video?.url) return data.video.url;
+        }
+        throw new Error("xAI video generation timed out");
+      })
+    );
+
+    // Upload all clips to Supabase
     const clipUrls = await Promise.all(
-      scenes.map(async (scene, i) => {
-        const prompt = scene.imagePrompt?.trim()
-          ? scene.imagePrompt
-          : `${scene.title}: ${scene.content.slice(0, 120)}. Cinematic, photorealistic, smooth motion.`;
-
-        const xaiUrl = await generateVideoClip(prompt);
-
-        // Download and upload to Supabase for permanent storage
+      xaiUrls.map(async (xaiUrl, i) => {
         const videoRes = await fetch(xaiUrl);
         if (!videoRes.ok) throw new Error(`클립 다운로드 실패: ${videoRes.status}`);
         const buf = await videoRes.arrayBuffer();
