@@ -50,6 +50,7 @@ function AuthForm() {
       if (mode === "login") {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
+        router.refresh();
         router.push(next);
       } else {
         const { error } = await supabase.auth.signUp({ email, password });
