@@ -36,7 +36,7 @@ function mapScriptToWordTimestamps(
   const totalChars = script.replace(/\s+/g, "").length;
   let charAccum = 0;
 
-  return sentences.map((sentence) => {
+  const entries = sentences.map((sentence) => {
     const sentenceChars = sentence.replace(/\s+/g, "").length;
     const startRatio = charAccum / totalChars;
     charAccum += sentenceChars;
@@ -58,6 +58,17 @@ function mapScriptToWordTimestamps(
       text: sentence,
     };
   });
+
+  // Add 50ms gap between subtitles to prevent overlap
+  const GAP = 0.05;
+  for (let i = 0; i < entries.length - 1; i++) {
+    if (entries[i].end >= entries[i + 1].start) {
+      entries[i].end = Math.max(entries[i].start + 0.1, entries[i + 1].start - GAP);
+      entries[i].end = Math.round(entries[i].end * 1000) / 1000;
+    }
+  }
+
+  return entries;
 }
 
 export async function POST(req: NextRequest) {
