@@ -302,7 +302,7 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
                     variant={mediaItems.filter(m => m.type === "image" && !m.name).length > 0 ? "outline" : "default"}
                   >
                     {loading ? (
-                      <><Loader2 className="w-4 h-4 animate-spin" /> 생성 중 ({scenes.length}개)...</>
+                      <><Loader2 className="w-4 h-4 animate-spin" /> 생성 중 ({genCount === "all" ? scenes.length : genCount}개)...</>
                     ) : (
                       <><Sparkles className="w-4 h-4" /> AI 이미지 생성하기</>
                     )}
