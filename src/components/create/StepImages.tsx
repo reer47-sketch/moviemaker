@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   ImageIcon, Loader2, ChevronRight, ChevronLeft,
-  RefreshCw, Upload, X, Plus, Film, Sparkles,
+  RefreshCw, Upload, X, Plus, Film, Sparkles, Video,
   AlertTriangle, CheckCircle2, GripVertical, ChevronUp, ChevronDown, Save,
 } from "lucide-react";
 import type { VideoProject } from "@/app/create/page";
@@ -27,6 +27,8 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
   const handleSave = () => { onSave(); setJustSaved(true); setTimeout(() => setJustSaved(false), 2000); };
   const [loading, setLoading] = useState(false);
   const [imageError, setImageError] = useState("");
+  const [genMode, setGenMode] = useState<"image" | "video">("image");
+  const [videoLoading, setVideoLoading] = useState(false);
   const [mediaItems, setMediaItems] = useState<MediaItem[]>(
     (project.imageUrls ?? []).map((url) => ({ url, type: "image" as const }))
   );
@@ -92,6 +94,30 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
     }
   };
 
+
+  const generateVideoClips = async () => {
+    setVideoLoading(true);
+    setImageError("");
+    try {
+      const res = await fetch("/api/generate/video-clips", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scenes: project.scenes }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.clipUrls) {
+        setImageError((data.error ?? "영상 클립 생성 실패") + (data.detail ? ` — ${data.detail}` : ""));
+        return;
+      }
+      const items: MediaItem[] = data.clipUrls.map((url: string) => ({ url, type: "video" as const, name: "grok-clip" }));
+      syncUrls(items);
+    } catch (e) {
+      console.error(e);
+      setImageError("네트워크 오류가 발생했습니다");
+    } finally {
+      setVideoLoading(false);
+    }
+  };
 
   const regenerateImage = async (idx: number) => {
     setRegeneratingIdx(idx);
@@ -185,29 +211,73 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
               </TabsList>
 
               <TabsContent value="ai" className="space-y-3 pt-2">
-                <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/50 border border-border/30">
-                  <ImageIcon className="w-4 h-4 text-muted-foreground shrink-0" />
-                  <span className="text-sm text-muted-foreground">
-                    총 <span className="text-foreground font-medium">{scenes.length}개</span> 장면에 대한 이미지가 생성됩니다
-                  </span>
+                {/* Engine toggle */}
+                <div className="flex rounded-xl border border-border/50 overflow-hidden">
+                  <button
+                    onClick={() => setGenMode("image")}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-colors ${
+                      genMode === "image" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50"
+                    }`}
+                  >
+                    <ImageIcon className="w-4 h-4" /> 이미지
+                  </button>
+                  <button
+                    onClick={() => setGenMode("video")}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-colors ${
+                      genMode === "video" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50"
+                    }`}
+                  >
+                    <Video className="w-4 h-4" /> 영상 클립
+                  </button>
                 </div>
+
+                <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/50 border border-border/30">
+                  {genMode === "image" ? (
+                    <><ImageIcon className="w-4 h-4 text-muted-foreground shrink-0" />
+                    <span className="text-sm text-muted-foreground">
+                      Grok Aurora — 총 <span className="text-foreground font-medium">{scenes.length}개</span> 장면 이미지 생성
+                    </span></>
+                  ) : (
+                    <><Video className="w-4 h-4 text-muted-foreground shrink-0" />
+                    <span className="text-sm text-muted-foreground">
+                      Grok Video — 장면당 8초 영상 클립 생성 <span className="text-amber-400 font-medium">(장면당 약 $0.40)</span>
+                    </span></>
+                  )}
+                </div>
+
                 {imageError && (
                   <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-4 py-3">
                     {imageError}
                   </div>
                 )}
-                <Button
-                  onClick={generateImages}
-                  disabled={loading || scenes.length === 0}
-                  className="w-full gap-2 h-11"
-                  variant={mediaItems.filter(m => m.type === "image" && !m.name).length > 0 ? "outline" : "default"}
-                >
-                  {loading ? (
-                    <><Loader2 className="w-4 h-4 animate-spin" /> 생성 중 ({scenes.length}개)...</>
-                  ) : (
-                    <><Sparkles className="w-4 h-4" /> AI 이미지 생성하기</>
-                  )}
-                </Button>
+
+                {genMode === "image" ? (
+                  <Button
+                    onClick={generateImages}
+                    disabled={loading || scenes.length === 0}
+                    className="w-full gap-2 h-11"
+                    variant={mediaItems.filter(m => m.type === "image" && !m.name).length > 0 ? "outline" : "default"}
+                  >
+                    {loading ? (
+                      <><Loader2 className="w-4 h-4 animate-spin" /> 생성 중 ({scenes.length}개)...</>
+                    ) : (
+                      <><Sparkles className="w-4 h-4" /> AI 이미지 생성하기</>
+                    )}
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={generateVideoClips}
+                    disabled={videoLoading || scenes.length === 0}
+                    className="w-full gap-2 h-11"
+                    variant="outline"
+                  >
+                    {videoLoading ? (
+                      <><Loader2 className="w-4 h-4 animate-spin" /> 영상 클립 생성 중... (수분 소요)</>
+                    ) : (
+                      <><Video className="w-4 h-4" /> Grok 영상 클립 생성하기</>
+                    )}
+                  </Button>
+                )}
 
               </TabsContent>
 
