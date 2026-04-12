@@ -9,7 +9,7 @@ const useXai = !!process.env.XAI_API_KEY;
 const imageClient = useXai
   ? new OpenAI({ apiKey: process.env.XAI_API_KEY, baseURL: "https://api.x.ai/v1" })
   : new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const IMAGE_MODEL = useXai ? "grok-2-image" : "dall-e-3";
+const IMAGE_MODEL = useXai ? "grok-imagine-image" : "dall-e-3";
 const IMAGE_SIZE = "1792x1024";
 
 type Scene = { title: string; content: string; imagePrompt?: string };
