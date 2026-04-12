@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Film, Mail, Lock, Loader2, Eye, EyeOff, CheckCircle } from "lucide-react";
@@ -20,6 +20,8 @@ export default function AuthPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const next = searchParams.get("next") ?? "/dashboard";
 
   const switchMode = (m: Mode) => {
     setMode(m);
@@ -48,7 +50,7 @@ export default function AuthPage() {
       if (mode === "login") {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        router.push("/dashboard");
+        router.push(next);
       } else {
         const { error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
@@ -200,9 +202,7 @@ export default function AuthPage() {
           </Card>
 
           <p className="text-center text-xs text-muted-foreground">
-            로그인 없이도 영상을 만들 수 있지만,{" "}
-            <br />
-            계정이 있으면 대시보드에서 내 영상을 관리할 수 있어요.
+            AI 영상 제작을 위해 로그인이 필요합니다.
           </p>
         </div>
       </div>
