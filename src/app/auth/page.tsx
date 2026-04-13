@@ -53,9 +53,10 @@ function AuthForm() {
         router.refresh();
         router.push(next);
       } else {
-        const { error } = await supabase.auth.signUp({ email, password });
+        const redirectTo = `${window.location.origin}/auth/callback?next=/dashboard`;
+        const { error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: redirectTo } });
         if (error) throw error;
-        setSuccess("가입이 완료됐습니다! 이메일을 확인해 인증 링크를 클릭하거나, 바로 로그인해 보세요.");
+        setSuccess("가입이 완료됐습니다! 이메일을 확인해 인증 링크를 클릭해 주세요.");
       }
     } catch (err: any) {
       const msg = err?.message ?? "오류가 발생했습니다.";
