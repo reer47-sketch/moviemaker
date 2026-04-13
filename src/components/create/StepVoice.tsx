@@ -160,7 +160,7 @@ export function StepVoice({ project, updateProject, onNext, onPrev, onSave }: Pr
         {/* Script preview */}
         <div className="p-4 rounded-xl bg-muted/50 border border-border/30">
           <div className="text-xs text-muted-foreground mb-2 font-medium">스크립트 미리보기</div>
-          <p className="text-sm leading-relaxed line-clamp-3 text-muted-foreground">
+          <p className="text-sm leading-relaxed text-muted-foreground max-h-40 overflow-y-auto pr-1">
             {project.script ?? "스크립트를 먼저 생성해주세요"}
           </p>
         </div>

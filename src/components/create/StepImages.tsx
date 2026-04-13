@@ -14,6 +14,10 @@ import type { VideoProject } from "@/app/create/page";
 import { createBrowserClient } from "@/lib/supabase";
 import { CREDIT_COSTS } from "@/lib/credits";
 
+const DURATION_SECONDS: Record<string, number> = {
+  short: 60, "2min": 120, "3min": 180, "5min": 300, "10min": 600,
+};
+
 type Props = {
   project: Partial<VideoProject>;
   updateProject: (data: Partial<VideoProject>) => void;
@@ -483,6 +487,9 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
                       <div className="flex items-center gap-2 mb-0.5">
                         <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">장면 {i + 1}</Badge>
                         <span className="text-xs font-medium truncate">{scene.title}</span>
+                        <span className="text-[10px] text-muted-foreground shrink-0 ml-auto">
+                          ~{((DURATION_SECONDS[project.duration ?? "short"] ?? 60) / Math.max(scenes.length, 1)).toFixed(1)}초
+                        </span>
                       </div>
                       <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">{scene.content}</p>
                     </div>
