@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
       scenes, audioUrl, imageUrls,
       keyPhrase = "", introMusicId = "", addHighlightIntro = false,
       duration = "long",
+      keyFontSize = 58, keyFontColor = "white", keyFontName = "NanumGothic-ExtraBold", keyTextPosition = 8,
     } = await req.json();
 
     const isShorts = duration === "short";
@@ -109,7 +110,7 @@ export async function POST(req: NextRequest) {
         });
 
         const { finalVideoFile, introAdded } = await applyIntro({
-          mainVideoFile, audioDuration, keyPhrase, introMusicId, addHighlightIntro, FFMPEG, ts, tmpDir, W, H,
+          mainVideoFile, audioDuration, keyPhrase, introMusicId, addHighlightIntro, FFMPEG, ts, tmpDir, W, H, keyFontSize, keyFontColor, keyFontName, keyTextPosition,
         });
 
         const supabase = createServiceClient();
@@ -183,13 +184,15 @@ export async function POST(req: NextRequest) {
     if (isShorts && keyPhrase?.trim()) {
       const titleText = keyPhrase.trim().substring(0, 18) + (keyPhrase.trim().length > 18 ? ".." : "");
       const safeTitle = escapeDrawtext(titleText);
-      const boldFontPath = path.join(process.cwd(), "public", "fonts", "NanumGothic-ExtraBold.ttf");
-      let boldFontPart = "";
-      try { await fs.access(boldFontPath); boldFontPart = `:fontfile='${boldFontPath.replace(/\\/g, "/")}'`; } catch {}
+      const fontAbsPath = path.join(process.cwd(), "public", "fonts", `${keyFontName}.ttf`);
+      let fontPart = "";
+      try { await fs.access(fontAbsPath); fontPart = `:fontfile='${fontAbsPath.replace(/\\/g, "/")}'`; } catch {}
+      const centerY = Math.floor(H * keyTextPosition / 100);
+      const boxY = Math.max(0, centerY - 65);
       finalConcatFilter = [
         `${concatInputs}concat=n=${n}:v=1:a=0[vconcat]`,
-        `[vconcat]drawbox=x=0:y=0:w=${W}:h=190:color=black@0.55:t=fill` +
-        `,drawtext=text='${safeTitle}'${boldFontPart}:fontsize=60:fontcolor=white:borderw=2:bordercolor=white:x=(w-tw)/2:y=72:shadowx=3:shadowy=3:shadowcolor=black@0.9[vout]`,
+        `[vconcat]drawbox=x=0:y=${boxY}:w=${W}:h=130:color=black@0.55:t=fill` +
+        `,drawtext=text='${safeTitle}'${fontPart}:fontsize=${keyFontSize}:fontcolor=${keyFontColor}:borderw=2:bordercolor=${keyFontColor}:x=(w-tw)/2:y=${centerY}-(th/2):shadowx=3:shadowy=3:shadowcolor=black@0.9[vout]`,
       ].join(";");
     } else {
       finalConcatFilter = `${concatInputs}concat=n=${n}:v=1:a=0[vout]`;
@@ -208,7 +211,7 @@ export async function POST(req: NextRequest) {
     await execAsync(mainCmd, { timeout: 300000, maxBuffer: 50 * 1024 * 1024 });
 
     const { finalVideoFile, introAdded } = await applyIntro({
-      mainVideoFile, audioDuration, keyPhrase, introMusicId, addHighlightIntro, FFMPEG, ts, tmpDir, W, H,
+      mainVideoFile, audioDuration, keyPhrase, introMusicId, addHighlightIntro, FFMPEG, ts, tmpDir, W, H, keyFontSize, keyFontColor, keyFontName, keyTextPosition,
     });
 
     const supabase = createServiceClient();
@@ -255,15 +258,16 @@ async function generateTextSlide({ scene, slideFile, fontPath, FFMPEG, W = 1280,
   await execAsync(cmd, { timeout: 30000, maxBuffer: 10 * 1024 * 1024 });
 }
 
-async function applyIntro({ mainVideoFile, audioDuration, keyPhrase, introMusicId, addHighlightIntro, FFMPEG, ts, tmpDir, W, H }: {
+async function applyIntro({ mainVideoFile, audioDuration, keyPhrase, introMusicId, addHighlightIntro, FFMPEG, ts, tmpDir, W, H, keyFontSize, keyFontColor, keyFontName, keyTextPosition }: {
   mainVideoFile: string; audioDuration: number; keyPhrase: string; introMusicId: string;
   addHighlightIntro: boolean; FFMPEG: string; ts: number; tmpDir: string; W: number; H: number;
+  keyFontSize: number; keyFontColor: string; keyFontName: string; keyTextPosition: number;
 }): Promise<{ finalVideoFile: string; introAdded: boolean }> {
   if (!addHighlightIntro || !keyPhrase) return { finalVideoFile: mainVideoFile, introAdded: false };
   try {
     const introFile = path.join(tmpDir, `intro-${ts}.mp4`);
     const combinedFile = path.join(tmpDir, `combined-${ts}.mp4`);
-    await buildHighlightIntro({ mainVideoFile, audioDuration, keyPhrase, introMusicId, FFMPEG, introFile, tmpDir, ts, W, H });
+    await buildHighlightIntro({ mainVideoFile, audioDuration, keyPhrase, introMusicId, FFMPEG, introFile, tmpDir, ts, W, H, keyFontSize, keyFontColor, keyFontName, keyTextPosition });
     await concatenateVideos({ introFile, mainVideoFile, outputFile: combinedFile, FFMPEG });
     await fs.unlink(introFile).catch(() => {});
     return { finalVideoFile: combinedFile, introAdded: true };
@@ -273,32 +277,34 @@ async function applyIntro({ mainVideoFile, audioDuration, keyPhrase, introMusicI
   }
 }
 
-async function buildHighlightIntro({ mainVideoFile, audioDuration, keyPhrase, introMusicId, FFMPEG, introFile, tmpDir, ts, W, H }: {
+async function buildHighlightIntro({ mainVideoFile, audioDuration, keyPhrase, introMusicId, FFMPEG, introFile, tmpDir, ts, W, H, keyFontSize, keyFontColor, keyFontName, keyTextPosition }: {
   mainVideoFile: string; audioDuration: number; keyPhrase: string;
   introMusicId: string; FFMPEG: string; introFile: string; tmpDir: string; ts: number; W: number; H: number;
+  keyFontSize: number; keyFontColor: string; keyFontName: string; keyTextPosition: number;
 }): Promise<void> {
   const startSec = Math.max(0, Math.min(audioDuration * 0.25, audioDuration - INTRO_DURATION - 1));
   const isVertical = H > W;
 
-  // Use ExtraBold for Shorts, regular for landscape
-  const boldFontPath = path.join(process.cwd(), "public", "fonts", "NanumGothic-ExtraBold.ttf");
-  const regularFontPath = path.join(process.cwd(), "public", "fonts", "NanumGothic.ttf");
+  const fontAbsPath = path.join(process.cwd(), "public", "fonts", `${keyFontName}.ttf`);
   let fontFilePart = "";
   try {
-    await fs.access(isVertical ? boldFontPath : regularFontPath);
-    fontFilePart = `:fontfile='${(isVertical ? boldFontPath : regularFontPath).replace(/\\/g, "/")}'`;
+    await fs.access(fontAbsPath);
+    fontFilePart = `:fontfile='${fontAbsPath.replace(/\\/g, "/")}'`;
   } catch {}
 
   const safeText = escapeDrawtext(keyPhrase);
   const mainFwd = mainVideoFile.replace(/\\/g, "/");
   const introFwd = introFile.replace(/\\/g, "/");
 
+  const centerY = Math.floor(H * keyTextPosition / 100);
+  const boxY = Math.max(0, centerY - 65);
+
   const vf = isVertical ? [
-    // Shorts intro: fill vertical frame, color grade, centered text band
+    // Shorts intro: fill vertical frame, color grade, text band at user-defined position
     `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1`,
     `eq=contrast=1.15:saturation=0.65:brightness=-0.04`,
-    `drawbox=x=0:y=${Math.floor(H / 2) - 65}:w=${W}:h=130:color=black@0.65:t=fill`,
-    `drawtext=text='${safeText}'${fontFilePart}:fontsize=58:fontcolor=white:borderw=2:bordercolor=white:x=(w-tw)/2:y=(h-th)/2:shadowx=3:shadowy=3:shadowcolor=black@0.9`,
+    `drawbox=x=0:y=${boxY}:w=${W}:h=130:color=black@0.65:t=fill`,
+    `drawtext=text='${safeText}'${fontFilePart}:fontsize=${keyFontSize}:fontcolor=${keyFontColor}:borderw=2:bordercolor=${keyFontColor}:x=(w-tw)/2:y=${centerY}-(th/2):shadowx=3:shadowy=3:shadowcolor=black@0.9`,
     `fade=t=in:st=0:d=0.7`,
     `fade=t=out:st=${INTRO_DURATION - 0.7}:d=0.7`,
   ].join(",") : [
@@ -306,8 +312,8 @@ async function buildHighlightIntro({ mainVideoFile, audioDuration, keyPhrase, in
     `scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,setsar=1`,
     `eq=contrast=1.15:saturation=0.65:brightness=-0.04`,
     `crop=1280:544:0:88,pad=1280:720:0:88:color=black`,
-    `drawbox=x=0:y=300:w=1280:h=120:color=black@0.65:t=fill`,
-    `drawtext=text='${safeText}'${fontFilePart}:fontsize=62:fontcolor=white:x=(w-tw)/2:y=(h-th)/2:shadowx=4:shadowy=4:shadowcolor=black@0.95`,
+    `drawbox=x=0:y=${Math.max(88, centerY - 60)}:w=1280:h=120:color=black@0.65:t=fill`,
+    `drawtext=text='${safeText}'${fontFilePart}:fontsize=${keyFontSize}:fontcolor=${keyFontColor}:x=(w-tw)/2:y=${centerY}-(th/2):shadowx=4:shadowy=4:shadowcolor=black@0.95`,
     `fade=t=in:st=0:d=0.7`,
     `fade=t=out:st=${INTRO_DURATION - 0.7}:d=0.7`,
   ].join(",");

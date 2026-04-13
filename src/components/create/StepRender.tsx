@@ -7,8 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
   Clapperboard, Loader2, ChevronRight, ChevronLeft,
-  CheckCircle, Save, Zap, Music, RotateCcw, Sparkles, Play, Pause,
+  CheckCircle, Save, Zap, Music, RotateCcw, Sparkles, Play, Pause, Type,
 } from "lucide-react";
+import { Slider } from "@/components/ui/slider";
 import type { VideoProject } from "@/app/create/page";
 import { INTRO_MUSIC_OPTIONS } from "@/lib/introMusic";
 import { createBrowserClient } from "@/lib/supabase";
@@ -55,6 +56,13 @@ export function StepRender({ project, updateProject, onNext, onPrev, onSave }: P
   const [playingUrl, setPlayingUrl] = useState("");
   const [audioEl, setAudioEl] = useState<HTMLAudioElement | null>(null);
 
+  // Text style
+  const isShorts = project.duration === "short";
+  const [keyFontSize, setKeyFontSize] = useState(58);
+  const [keyFontColor, setKeyFontColor] = useState("white");
+  const [keyFontName, setKeyFontName] = useState("NanumGothic-ExtraBold");
+  const [keyTextPosition, setKeyTextPosition] = useState(isShorts ? 8 : 42);
+
   const startRender = async () => {
     setLoading(true);
     setProgress(0);
@@ -89,6 +97,10 @@ export function StepRender({ project, updateProject, onNext, onPrev, onSave }: P
           addHighlightIntro,
           topic: project.topic ?? "",
           duration: project.duration ?? "short",
+          keyFontSize,
+          keyFontColor,
+          keyFontName,
+          keyTextPosition,
         }),
       });
       const data = await res.json();
@@ -340,6 +352,91 @@ export function StepRender({ project, updateProject, onNext, onPrev, onSave }: P
                       </button>
                     </div>
                   )}
+                </div>
+
+                {/* Text Style */}
+                <div className="pt-1">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="flex-1 h-px bg-border/40" />
+                    <span className="text-xs text-muted-foreground font-medium flex items-center gap-1">
+                      <Type className="w-3 h-3" /> 텍스트 스타일
+                    </span>
+                    <div className="flex-1 h-px bg-border/40" />
+                  </div>
+
+                  <div className="space-y-3">
+                    {/* Color */}
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-muted-foreground w-10 shrink-0">색상</span>
+                      <div className="flex gap-2">
+                        {[
+                          { value: "white",   bg: "#ffffff", label: "흰색" },
+                          { value: "yellow",  bg: "#ffff00", label: "노랑" },
+                          { value: "#ffaa00", bg: "#ffaa00", label: "주황" },
+                          { value: "#00ffcc", bg: "#00ffcc", label: "민트" },
+                        ].map((c) => (
+                          <button
+                            key={c.value}
+                            onClick={() => setKeyFontColor(c.value)}
+                            title={c.label}
+                            className={`w-6 h-6 rounded-full border-2 transition-all ${keyFontColor === c.value ? "border-primary scale-110" : "border-border/50 hover:border-border"}`}
+                            style={{ backgroundColor: c.bg }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Font */}
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-muted-foreground w-10 shrink-0">폰트</span>
+                      <div className="flex gap-1.5">
+                        {[
+                          { id: "NanumGothic-ExtraBold", label: "ExtraBold" },
+                          { id: "NanumGothic-Bold",      label: "Bold" },
+                          { id: "NanumGothic",           label: "Regular" },
+                        ].map((f) => (
+                          <button
+                            key={f.id}
+                            onClick={() => setKeyFontName(f.id)}
+                            className={`px-2.5 py-1 rounded-lg border text-xs font-medium transition-all
+                              ${keyFontName === f.id
+                                ? "border-primary bg-primary/10 text-primary"
+                                : "border-border/50 text-muted-foreground hover:border-border"}`}
+                          >
+                            {f.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Font size */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground">글자 크기</span>
+                        <span className="text-xs font-mono text-primary">{keyFontSize}px</span>
+                      </div>
+                      <Slider min={28} max={80} step={2} value={[keyFontSize]}
+                        onValueChange={(v) => setKeyFontSize(Array.isArray(v) ? v[0] : v)} />
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>작게 (28)</span><span>크게 (80)</span>
+                      </div>
+                    </div>
+
+                    {/* Position */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground">세로 위치</span>
+                        <span className="text-xs font-mono text-primary">
+                          {keyTextPosition <= 15 ? "상단" : keyTextPosition <= 35 ? "상중단" : keyTextPosition <= 55 ? "중앙" : keyTextPosition <= 75 ? "하중단" : "하단"}
+                        </span>
+                      </div>
+                      <Slider min={5} max={90} step={5} value={[keyTextPosition]}
+                        onValueChange={(v) => setKeyTextPosition(Array.isArray(v) ? v[0] : v)} />
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>상단</span><span>하단</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
