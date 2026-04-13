@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Sparkles, Loader2, ChevronRight, RefreshCw, FileText,
-  Pencil, Check, Store, PawPrint, Package, PenLine, Save, Zap,
+  Pencil, Check, Store, PawPrint, Package, PenLine, Save, Zap, History, X,
 } from "lucide-react";
 import type { VideoProject } from "@/app/create/page";
 import { DURATION_OPTIONS } from "@/lib/introMusic";
@@ -127,6 +127,26 @@ export function StepScript({ project, updateProject, onNext, onSave }: Props) {
   const [duration, setDuration] = useState(project.duration ?? "short");
   const [language, setLanguage] = useState(project.language ?? "ko");
   const [characterDescription, setCharacterDescription] = useState(project.characterDescription ?? "");
+  const [charDescHistory, setCharDescHistory] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem("charDescHistory") ?? "[]"); } catch { return []; }
+  });
+
+  const saveCharDescHistory = (desc: string) => {
+    if (!desc.trim()) return;
+    setCharDescHistory((prev) => {
+      const next = [desc, ...prev.filter((d) => d !== desc)].slice(0, 8);
+      localStorage.setItem("charDescHistory", JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const removeCharDescHistory = (desc: string) => {
+    setCharDescHistory((prev) => {
+      const next = prev.filter((d) => d !== desc);
+      localStorage.setItem("charDescHistory", JSON.stringify(next));
+      return next;
+    });
+  };
   const [selectedMoods, setSelectedMoods] = useState<string[]>(project.moods ?? []);
 
   const toggleMood = (mood: string) => {
@@ -173,6 +193,7 @@ export function StepScript({ project, updateProject, onNext, onSave }: Props) {
       setScript(data.script);
       setScenes(data.scenes);
       setKeyPhrase(data.keyPhrase ?? "");
+      saveCharDescHistory(characterDescription);
       updateProject({ topic, script: data.script, scenes: data.scenes, keyPhrase: data.keyPhrase ?? "", duration, characterDescription, language, moods: selectedMoods });
     } catch (e) {
       console.error(e);
@@ -239,6 +260,35 @@ export function StepScript({ project, updateProject, onNext, onSave }: Props) {
             placeholder="예) a friendly cartoon character with round glasses and orange hoodie"
             className="w-full px-4 py-3 rounded-xl bg-muted border border-border/50 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all"
           />
+          {charDescHistory.length > 0 && (
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <History className="w-3 h-3" />
+                최근 사용
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {charDescHistory.map((desc) => (
+                  <div
+                    key={desc}
+                    className={`group flex items-center gap-1 pl-2.5 pr-1.5 py-1 rounded-lg border text-xs transition-all cursor-pointer
+                      ${characterDescription === desc
+                        ? "border-primary/50 bg-primary/10 text-primary"
+                        : "border-border/50 bg-muted/40 text-muted-foreground hover:border-border hover:text-foreground"
+                      }`}
+                    onClick={() => setCharacterDescription(desc)}
+                  >
+                    <span className="max-w-[200px] truncate">{desc}</span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); removeCharDescHistory(desc); }}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity ml-0.5 hover:text-destructive"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Duration selector */}
