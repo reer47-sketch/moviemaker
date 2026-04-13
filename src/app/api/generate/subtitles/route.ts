@@ -21,51 +21,101 @@ function splitIntoSentences(script: string): string[] {
     .filter((s) => s.length > 0);
 }
 
-/** Map script sentences to real word timestamps from ElevenLabs STT */
+/** Normalize text for fuzzy comparison: remove spaces/punctuation, lowercase */
+function normText(s: string): string {
+  return s.replace(/[\s\.,!?。、·\-:;'"()[\]]/g, "").toLowerCase();
+}
+
+/**
+ * Dice coefficient on characters: 2 * |intersection| / (|a| + |b|)
+ * Works well for Korean (preserves CJK chars) and Latin.
+ */
+function charDice(a: string, b: string): number {
+  if (!a.length || !b.length) return 0;
+  if (a === b) return 1;
+  const pool = b.split("");
+  let matches = 0;
+  for (const c of a) {
+    const idx = pool.indexOf(c);
+    if (idx !== -1) { matches++; pool.splice(idx, 1); }
+  }
+  return (2 * matches) / (a.length + b.length);
+}
+
+/**
+ * Map script sentences to STT word timestamps via fuzzy matching.
+ *
+ * Strategy: for each sentence (in order) find the window of consecutive STT
+ * words whose concatenated text best matches the sentence text (Dice on chars).
+ * A sequential cursor prevents sentences from matching out of order.
+ * Falls back to time-ratio if the best fuzzy score is very low.
+ */
 function mapScriptToWordTimestamps(
   script: string,
   words: ElevenLabsWord[]
 ): SubtitleEntry[] {
-  // Only use actual spoken words (skip spacing/audio_event tokens)
   const spokenWords = words.filter((w) => w.type === "word" && w.start != null);
   if (!spokenWords.length) return [];
 
   const sentences = splitIntoSentences(script);
   if (!sentences.length) return [];
 
-  // Map by TIME ratio, not word index.
-  // Character count is roughly proportional to speech duration across all TTS engines
-  // (including Supertone chunked audio). Using word index assumes uniform per-word
-  // duration which causes systematic sync drift.
-  const speechStart = spokenWords[0].start;
-  const speechEnd = spokenWords[spokenWords.length - 1].end;
-  const totalSpeechDuration = speechEnd - speechStart;
+  const totalNormChars = sentences.reduce((s, sen) => s + normText(sen).length, 0);
 
-  const totalChars = sentences.reduce((s, sen) => s + sen.replace(/\s+/g, "").length, 0);
-  let charAccum = 0;
+  // Time-ratio fallback values
+  const speechStart = spokenWords[0].start;
+  const totalSpeechDuration = spokenWords[spokenWords.length - 1].end - speechStart;
+  let charAccumFallback = 0;
+
+  let cursor = 0; // sequential search start
 
   const entries = sentences.map((sentence) => {
-    const sentenceChars = sentence.replace(/\s+/g, "").length;
-    const startRatio = charAccum / totalChars;
-    charAccum += sentenceChars;
-    const endRatio = Math.min(charAccum / totalChars, 1);
+    const sentNorm = normText(sentence);
+    const sentChars = sentNorm.length;
 
-    // Convert char ratio → estimated time
-    const estStart = speechStart + startRatio * totalSpeechDuration;
-    const estEnd   = speechStart + endRatio   * totalSpeechDuration;
+    // Estimated word count for this sentence (used to set search window size)
+    const estWords = Math.max(1, Math.round((sentChars / totalNormChars) * spokenWords.length));
 
-    // Find the word whose start is closest to estStart
-    const startWord = spokenWords.reduce((best, w) =>
-      Math.abs(w.start - estStart) < Math.abs(best.start - estStart) ? w : best
-    );
-    // Find the word whose end is closest to estEnd
-    const endWord = spokenWords.reduce((best, w) =>
-      Math.abs(w.end - estEnd) < Math.abs(best.end - estEnd) ? w : best
-    );
+    // Search window: give 3× slack forward from cursor, never go backwards
+    const searchEnd = Math.min(spokenWords.length, cursor + estWords * 3 + 6);
+
+    let bestScore = -1;
+    let bestWs = cursor;
+    let bestWe = Math.min(cursor + estWords - 1, spokenWords.length - 1);
+
+    // Sliding window: vary start and size
+    for (let ws = cursor; ws < searchEnd; ws++) {
+      let running = "";
+      for (let we = ws; we < Math.min(ws + estWords * 2 + 3, searchEnd); we++) {
+        running += normText(spokenWords[we].text);
+        const score = charDice(sentNorm, running);
+        if (score > bestScore) {
+          bestScore = score;
+          bestWs = ws;
+          bestWe = we;
+        }
+      }
+    }
+
+    // If fuzzy match confidence is very low, fall back to time-ratio
+    charAccumFallback += sentChars;
+    if (bestScore < 0.25) {
+      const estTime = speechStart + (charAccumFallback / totalNormChars) * totalSpeechDuration;
+      const fallbackWord = spokenWords.reduce((b, w) =>
+        Math.abs(w.start - estTime) < Math.abs(b.start - estTime) ? w : b
+      );
+      bestWs = spokenWords.indexOf(fallbackWord);
+      bestWe = Math.min(bestWs + estWords - 1, spokenWords.length - 1);
+    }
+
+    cursor = bestWe + 1;
+
+    const safeWs = Math.min(bestWs, spokenWords.length - 1);
+    const safeWe = Math.min(bestWe, spokenWords.length - 1);
 
     return {
-      start: Math.round(startWord.start * 1000) / 1000,
-      end:   Math.round(endWord.end   * 1000) / 1000,
+      start: Math.round(spokenWords[safeWs].start * 1000) / 1000,
+      end:   Math.round(spokenWords[safeWe].end   * 1000) / 1000,
       text:  sentence,
     };
   });
