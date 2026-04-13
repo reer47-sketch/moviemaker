@@ -189,7 +189,7 @@ export async function POST(req: NextRequest) {
       finalConcatFilter = [
         `${concatInputs}concat=n=${n}:v=1:a=0[vconcat]`,
         `[vconcat]drawbox=x=0:y=0:w=${W}:h=190:color=black@0.55:t=fill` +
-        `,drawtext=text='${safeTitle}'${boldFontPart}:fontsize=60:fontcolor=white:borderw=5:bordercolor=white:x=(w-tw)/2:y=72:shadowx=5:shadowy=5:shadowcolor=black@0.95[vout]`,
+        `,drawtext=text='${safeTitle}'${boldFontPart}:fontsize=60:fontcolor=white:borderw=2:bordercolor=white:x=(w-tw)/2:y=72:shadowx=3:shadowy=3:shadowcolor=black@0.9[vout]`,
       ].join(";");
     } else {
       finalConcatFilter = `${concatInputs}concat=n=${n}:v=1:a=0[vout]`;
@@ -298,7 +298,7 @@ async function buildHighlightIntro({ mainVideoFile, audioDuration, keyPhrase, in
     `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1`,
     `eq=contrast=1.15:saturation=0.65:brightness=-0.04`,
     `drawbox=x=0:y=${Math.floor(H / 2) - 65}:w=${W}:h=130:color=black@0.65:t=fill`,
-    `drawtext=text='${safeText}'${fontFilePart}:fontsize=58:fontcolor=white:borderw=5:bordercolor=white:x=(w-tw)/2:y=(h-th)/2:shadowx=5:shadowy=5:shadowcolor=black@0.95`,
+    `drawtext=text='${safeText}'${fontFilePart}:fontsize=58:fontcolor=white:borderw=2:bordercolor=white:x=(w-tw)/2:y=(h-th)/2:shadowx=3:shadowy=3:shadowcolor=black@0.9`,
     `fade=t=in:st=0:d=0.7`,
     `fade=t=out:st=${INTRO_DURATION - 0.7}:d=0.7`,
   ].join(",") : [
