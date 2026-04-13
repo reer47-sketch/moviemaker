@@ -17,12 +17,25 @@ export async function GET() {
     // Filter voices that support Korean
     const voices = (data.items ?? [])
       .filter((v: any) => (v.language ?? []).includes("ko"))
-      .map((v: any) => ({
-        voice_id: v.voice_id,
-        name: v.name,
-        gender: v.gender ?? "",
-        styles: v.styles ?? ["neutral"],
-      }));
+      .map((v: any) => {
+        // Find a Korean sample URL (prefer sona_speech_2, fallback to any ko sample)
+        const samples: any[] = v.samples ?? [];
+        const koSample =
+          samples.find((s) => s.language === "ko" && s.model === "sona_speech_2") ??
+          samples.find((s) => s.language === "ko") ??
+          null;
+        return {
+          voice_id: v.voice_id,
+          name: v.name,
+          description: v.description ?? "",
+          age: v.age ?? "",
+          gender: v.gender ?? "",
+          use_case: v.use_case ?? "",
+          styles: v.styles ?? ["neutral"],
+          thumbnail_image_url: v.thumbnail_image_url ?? "",
+          preview_url: koSample?.url ?? "",
+        };
+      });
     return NextResponse.json({ voices });
   } catch (e) {
     console.error("[supertone voices] error:", e);

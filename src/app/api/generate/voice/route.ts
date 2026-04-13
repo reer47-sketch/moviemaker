@@ -84,7 +84,6 @@ export async function POST(req: NextRequest) {
               model: "sona_speech_2",
               style: supertoneStyle,
               output_format: "mp3",
-              voice_settings: { speed: 1 },
             }),
           }
         );

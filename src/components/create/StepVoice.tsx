@@ -20,8 +20,13 @@ type Props = {
 type SupertoneVoice = {
   voice_id: string;
   name: string;
+  description: string;
+  age: string;
   gender: string;
+  use_case: string;
   styles: string[];
+  thumbnail_image_url: string;
+  preview_url: string;
 };
 
 const VOICES = [
@@ -57,6 +62,8 @@ export function StepVoice({ project, updateProject, onNext, onPrev, onSave }: Pr
   const [supertoneVoiceId, setSupertoneVoiceId] = useState("");
   const [supertoneStyle, setSupertoneStyle] = useState("neutral");
   const [supertoneLoading, setSupertoneLoading] = useState(false);
+  const [previewingId, setPreviewingId] = useState<string | null>(null);
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const proxyUrl = (url: string) =>
     url ? `/api/proxy?url=${encodeURIComponent(url)}` : "";
@@ -223,32 +230,93 @@ export function StepVoice({ project, updateProject, onNext, onPrev, onSave }: Pr
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {supertoneVoices.map((voice) => (
-                  <button
-                    key={voice.voice_id}
-                    onClick={() => {
-                      setSupertoneVoiceId(voice.voice_id);
-                      setSupertoneStyle(voice.styles?.[0] ?? "neutral");
-                    }}
-                    className={`p-3 rounded-xl border text-left transition-all duration-200
-                      ${supertoneVoiceId === voice.voice_id
-                        ? "border-emerald-500/50 bg-emerald-500/5"
-                        : "border-border/50 bg-muted/30 hover:border-border"
-                      }`}
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${supertoneVoiceId === voice.voice_id ? "bg-emerald-500/20" : "bg-muted"}`}>
-                        <Volume2 className={`w-4 h-4 ${supertoneVoiceId === voice.voice_id ? "text-emerald-400" : "text-muted-foreground"}`} />
+                {supertoneVoices.map((voice) => {
+                  const isSelected = supertoneVoiceId === voice.voice_id;
+                  const isPreviewing = previewingId === voice.voice_id;
+                  const genderLabel = voice.gender === "male" ? "남성" : voice.gender === "female" ? "여성" : voice.gender;
+                  return (
+                    <button
+                      key={voice.voice_id}
+                      onClick={() => {
+                        setSupertoneVoiceId(voice.voice_id);
+                        setSupertoneStyle(voice.styles?.[0] ?? "neutral");
+                      }}
+                      className={`p-3 rounded-xl border text-left transition-all duration-200
+                        ${isSelected
+                          ? "border-emerald-500/50 bg-emerald-500/5"
+                          : "border-border/50 bg-muted/30 hover:border-border"
+                        }`}
+                    >
+                      {/* Thumbnail + name row */}
+                      <div className="flex items-center gap-2 mb-2">
+                        {voice.thumbnail_image_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={voice.thumbnail_image_url}
+                            alt={voice.name}
+                            className="w-9 h-9 rounded-full object-cover shrink-0 border border-border/30"
+                          />
+                        ) : (
+                          <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${isSelected ? "bg-emerald-500/20" : "bg-muted"}`}>
+                            <Volume2 className={`w-4 h-4 ${isSelected ? "text-emerald-400" : "text-muted-foreground"}`} />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-sm truncate">{voice.name}</div>
+                          {genderLabel && (
+                            <div className="text-[10px] text-muted-foreground">{genderLabel}{voice.age ? ` · ${voice.age}` : ""}</div>
+                          )}
+                        </div>
                       </div>
-                      <div className="font-medium text-sm truncate">{voice.name}</div>
-                      {voice.gender && (
-                        <Badge variant="outline" className="text-xs ml-auto shrink-0">
-                          {voice.gender === "male" ? "남성" : voice.gender === "female" ? "여성" : voice.gender}
-                        </Badge>
+
+                      {/* Description */}
+                      {voice.description && (
+                        <p className="text-xs text-muted-foreground leading-relaxed mb-2 line-clamp-2">
+                          {voice.description}
+                        </p>
                       )}
-                    </div>
-                  </button>
-                ))}
+
+                      {/* use_case badge + preview button */}
+                      <div className="flex items-center gap-1.5 mt-1">
+                        {voice.use_case && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted border border-border/40 text-muted-foreground shrink-0">
+                            {voice.use_case}
+                          </span>
+                        )}
+                        {voice.preview_url && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (isPreviewing) {
+                                previewAudioRef.current?.pause();
+                                setPreviewingId(null);
+                              } else {
+                                if (previewAudioRef.current) {
+                                  previewAudioRef.current.pause();
+                                }
+                                const audio = new Audio(voice.preview_url);
+                                previewAudioRef.current = audio;
+                                audio.play().catch(console.error);
+                                setPreviewingId(voice.voice_id);
+                                audio.onended = () => setPreviewingId(null);
+                              }
+                            }}
+                            className={`ml-auto flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium border transition-colors
+                              ${isPreviewing
+                                ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400"
+                                : "bg-muted border-border/50 text-muted-foreground hover:border-emerald-500/40 hover:text-emerald-400"
+                              }`}
+                          >
+                            {isPreviewing
+                              ? <><Pause className="w-2.5 h-2.5" /> 중지</>
+                              : <><Play className="w-2.5 h-2.5" /> 미리듣기</>
+                            }
+                          </button>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             )}
 
