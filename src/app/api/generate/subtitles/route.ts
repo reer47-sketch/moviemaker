@@ -217,28 +217,37 @@ async function burnSubtitles(
 
     const fontcolor = style === "yellow" ? "yellow" : "white";
 
-    const filters = subtitles.map((sub) => {
+    // Build one drawtext per line (avoids \n shell-escaping issues on Windows)
+    const lineHeight = Math.round(fontSize * 1.4);
+    const filters: string[] = [];
+    for (const sub of subtitles) {
       const wrapped = wrapText(sub.text, charsPerLine);
-      const safeText = wrapped.split("\n").map(escapeDrawtext).join("\\n");
+      const lines = wrapped.split("\n");
       const ts0 = sub.start.toFixed(3);
       const ts1 = sub.end.toFixed(3);
 
-      let f =
-        `drawtext=text='${safeText}':line_spacing=4` +
-        `:enable='between(t,${ts0},${ts1})'` +
-        fontFilePart +
-        `:fontsize=${fontSize}` +
-        `:fontcolor=${fontcolor}` +
-        `:x=(w-tw)/2` +
-        `:y=h-th-${subtitlePosition}`;
+      lines.forEach((line, i) => {
+        const safeText = escapeDrawtext(line);
+        // Stack lines from bottom: last line at subtitlePosition, earlier lines above it
+        const yVal = `h-th-${subtitlePosition + (lines.length - 1 - i) * lineHeight}`;
 
-      if (style === "outline") {
-        f += `:shadowcolor=black@0.8:shadowx=2:shadowy=2`;
-      } else {
-        f += `:box=1:boxcolor=black@0.5:boxborderw=8`;
-      }
-      return f;
-    });
+        let f =
+          `drawtext=text='${safeText}'` +
+          `:enable='between(t,${ts0},${ts1})'` +
+          fontFilePart +
+          `:fontsize=${fontSize}` +
+          `:fontcolor=${fontcolor}` +
+          `:x=(w-tw)/2` +
+          `:y=${yVal}`;
+
+        if (style === "outline") {
+          f += `:shadowcolor=black@0.8:shadowx=2:shadowy=2`;
+        } else {
+          f += `:box=1:boxcolor=black@0.5:boxborderw=8`;
+        }
+        filters.push(f);
+      });
+    }
 
     const vf = filters.join(",");
     const cmd =
