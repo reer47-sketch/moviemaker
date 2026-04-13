@@ -148,6 +148,18 @@ export async function POST(req: NextRequest) {
   }
 }
 
+/** Break text into at most 2 lines if it exceeds maxChars */
+function wrapText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  const mid = Math.ceil(text.length / 2);
+  let breakAt = mid;
+  for (let d = 1; d <= 8; d++) {
+    if (mid - d >= 0 && text[mid - d] === " ") { breakAt = mid - d; break; }
+    if (mid + d < text.length && text[mid + d] === " ") { breakAt = mid + d + 1; break; }
+  }
+  return text.substring(0, breakAt).trim() + "\n" + text.substring(breakAt).trim();
+}
+
 function escapeDrawtext(t: string): string {
   return t
     .replace(/\\/g, "\\\\")
@@ -180,6 +192,19 @@ async function burnSubtitles(
 
     const { style, fontSize } = options;
 
+    // Detect video width via ffprobe to handle vertical (Shorts) videos
+    const ffprobeInstaller = await import("@ffprobe-installer/ffprobe");
+    const ffmpegFluent = (await import("fluent-ffmpeg")).default;
+    ffmpegFluent.setFfprobePath(ffprobeInstaller.path);
+    const videoWidth: number = await new Promise((resolve) => {
+      ffmpegFluent.ffprobe(tempVideo, (_err: unknown, meta: any) => {
+        const stream = meta?.streams?.find((s: any) => s.codec_type === "video");
+        resolve(stream?.width ?? 1280);
+      });
+    });
+    // chars per line: each Korean char ≈ fontSize px wide, with 10% padding
+    const charsPerLine = Math.floor((videoWidth * 0.9) / (fontSize * 1.1));
+
     const fontAbsPath = path.join(process.cwd(), "public", "fonts", "NanumGothic.ttf");
     let fontFilePart = "";
     try {
@@ -192,12 +217,13 @@ async function burnSubtitles(
     const fontcolor = style === "yellow" ? "yellow" : "white";
 
     const filters = subtitles.map((sub) => {
-      const safeText = escapeDrawtext(sub.text);
+      const wrapped = wrapText(sub.text, charsPerLine);
+      const safeText = wrapped.split("\n").map(escapeDrawtext).join("\\n");
       const ts0 = sub.start.toFixed(3);
       const ts1 = sub.end.toFixed(3);
 
       let f =
-        `drawtext=text='${safeText}'` +
+        `drawtext=text='${safeText}':line_spacing=4` +
         `:enable='between(t,${ts0},${ts1})'` +
         fontFilePart +
         `:fontsize=${fontSize}` +

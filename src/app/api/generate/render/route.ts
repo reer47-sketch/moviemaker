@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
     const {
       scenes, audioUrl, imageUrls,
       keyPhrase = "", introMusicId = "", addHighlightIntro = false,
-      topic = "", duration = "long",
+      duration = "long",
     } = await req.json();
 
     const isShorts = duration === "short";
@@ -178,16 +178,18 @@ export async function POST(req: NextRequest) {
     );
     const concatInputs = mediaFiles.map((_, i) => `[v${i}]`).join("");
 
-    // Shorts: add topic text overlay at top
+    // Shorts: add keyPhrase text overlay at top
     let finalConcatFilter: string;
-    if (isShorts && topic?.trim()) {
-      const topicTrunc = topic.trim().substring(0, 16) + (topic.trim().length > 16 ? ".." : "");
-      const safeTopic = escapeDrawtext(topicTrunc);
-      const fontPart = hasFontFile ? `:fontfile='${fontAbsPath.replace(/\\/g, "/")}'` : "";
+    if (isShorts && keyPhrase?.trim()) {
+      const titleText = keyPhrase.trim().substring(0, 18) + (keyPhrase.trim().length > 18 ? ".." : "");
+      const safeTitle = escapeDrawtext(titleText);
+      const boldFontPath = path.join(process.cwd(), "public", "fonts", "NanumGothic-ExtraBold.ttf");
+      let boldFontPart = "";
+      try { await fs.access(boldFontPath); boldFontPart = `:fontfile='${boldFontPath.replace(/\\/g, "/")}'`; } catch {}
       finalConcatFilter = [
         `${concatInputs}concat=n=${n}:v=1:a=0[vconcat]`,
-        `[vconcat]drawbox=x=0:y=0:w=${W}:h=180:color=black@0.55:t=fill` +
-        `,drawtext=text='${safeTopic}'${fontPart}:fontsize=54:fontcolor=white:x=(w-tw)/2:y=72:shadowx=4:shadowy=4:shadowcolor=black@0.95[vout]`,
+        `[vconcat]drawbox=x=0:y=0:w=${W}:h=190:color=black@0.55:t=fill` +
+        `,drawtext=text='${safeTitle}'${boldFontPart}:fontsize=60:fontcolor=white:borderw=5:bordercolor=white:x=(w-tw)/2:y=72:shadowx=5:shadowy=5:shadowcolor=black@0.95[vout]`,
       ].join(";");
     } else {
       finalConcatFilter = `${concatInputs}concat=n=${n}:v=1:a=0[vout]`;

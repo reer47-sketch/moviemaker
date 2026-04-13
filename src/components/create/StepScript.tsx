@@ -403,14 +403,23 @@ export function StepScript({ project, updateProject, onNext, onSave }: Props) {
           )}
         </Button>
 
-        {/* Key phrase highlight */}
-        {keyPhrase && (
-          <div className="p-3 rounded-xl bg-primary/5 border border-primary/20 flex items-start gap-2.5">
-            <Zap className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-            <div className="min-w-0">
-              <div className="text-xs font-medium text-primary mb-0.5">핵심 문구 (인트로 오버레이)</div>
-              <div className="text-sm font-semibold truncate">{keyPhrase}</div>
-            </div>
+        {/* Thumbnail / Intro text — editable */}
+        {script && (
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium flex items-center gap-1.5">
+              <Zap className="w-3.5 h-3.5 text-primary" />
+              썸네일 / 인트로 텍스트
+              <span className="text-xs font-normal text-muted-foreground ml-0.5">
+                {duration === "short" ? "— 숏폼 영상 상단에 표시됩니다" : "— 인트로 하이라이트 오버레이에 사용됩니다"}
+              </span>
+            </label>
+            <input
+              type="text"
+              value={keyPhrase}
+              onChange={(e) => setKeyPhrase(e.target.value)}
+              placeholder="AI가 추천한 문구를 직접 수정할 수 있어요"
+              className="w-full px-4 py-2.5 rounded-xl bg-primary/5 border border-primary/20 text-sm font-semibold placeholder:font-normal placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all"
+            />
           </div>
         )}
 

@@ -84,7 +84,7 @@ export function StepRender({ project, updateProject, onNext, onPrev, onSave }: P
           scenes: project.scenes,
           audioUrl: project.audioUrl,
           imageUrls: project.imageUrls,
-          keyPhrase: addHighlightIntro ? (project.keyPhrase ?? "") : "",
+          keyPhrase: project.keyPhrase ?? "",
           introMusicId: addHighlightIntro ? introMusicId : "",
           addHighlightIntro,
           topic: project.topic ?? "",
