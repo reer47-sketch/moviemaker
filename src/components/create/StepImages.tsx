@@ -186,10 +186,13 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
       const res = await fetch(`/api/proxy?url=${encodeURIComponent(item.url)}`);
       const blob = await res.blob();
       const ext = item.type === "video" ? "mp4" : "jpg";
-      const name = item.name ?? `media-${idx + 1}.${ext}`;
+      const base = item.name
+        ?? (project.keyPhrase
+          ? `${project.keyPhrase.replace(/[\\/:*?"<>|]/g, "").trim()}-${idx + 1}`
+          : `media-${idx + 1}`);
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = name.includes(".") ? name : `${name}.${ext}`;
+      a.download = base.includes(".") ? base : `${base}.${ext}`;
       a.click();
       URL.revokeObjectURL(a.href);
     } catch (e) {
