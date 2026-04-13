@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   ImageIcon, Loader2, ChevronRight, ChevronLeft,
   RefreshCw, Upload, X, Plus, Film, Sparkles, Video,
-  AlertTriangle, CheckCircle2, GripVertical, ChevronUp, ChevronDown, Save,
+  AlertTriangle, CheckCircle2, GripVertical, ChevronUp, ChevronDown, Save, Download,
 } from "lucide-react";
 import type { VideoProject } from "@/app/create/page";
 import { createBrowserClient } from "@/lib/supabase";
@@ -180,6 +180,22 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
   };
 
   const removeItem = (idx: number) => syncUrls(mediaItems.filter((_, i) => i !== idx));
+
+  const downloadItem = async (item: MediaItem, idx: number) => {
+    try {
+      const res = await fetch(`/api/proxy?url=${encodeURIComponent(item.url)}`);
+      const blob = await res.blob();
+      const ext = item.type === "video" ? "mp4" : "jpg";
+      const name = item.name ?? `media-${idx + 1}.${ext}`;
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = name.includes(".") ? name : `${name}.${ext}`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e) {
+      console.error("Download failed:", e);
+    }
+  };
 
   /* ── 카운트 상태 ── */
   const diff = mediaItems.length - scenes.length;
@@ -410,6 +426,9 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
                             재생성
                           </Button>
                         )}
+                        <Button size="sm" variant="secondary" className="h-7 w-7 p-0" onClick={() => downloadItem(item, i)} title="다운로드">
+                          <Download className="w-3 h-3" />
+                        </Button>
                         <Button size="sm" variant="destructive" className="h-7 w-7 p-0" onClick={() => removeItem(i)}>
                           <X className="w-3 h-3" />
                         </Button>
