@@ -290,12 +290,12 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
                   {genMode === "image" ? (
                     <><ImageIcon className="w-4 h-4 text-muted-foreground shrink-0" />
                     <span className="text-sm text-muted-foreground">
-                      Grok Aurora — <span className="text-foreground font-medium">{genCount === "all" ? scenes.length : genCount}개</span> 이미지 생성
+                      AI 이미지 — <span className="text-foreground font-medium">{genCount === "all" ? scenes.length : genCount}개</span> 생성
                     </span></>
                   ) : (
                     <><Video className="w-4 h-4 text-muted-foreground shrink-0" />
                     <span className="text-sm text-muted-foreground">
-                      Grok Video — 클립당 8초 <span className="text-amber-400 font-medium">
+                      AI 영상 클립 — 클립당 8초 <span className="text-amber-400 font-medium">
                         (예상 비용: ${((genCount === "all" ? scenes.length : genCount) * 0.4).toFixed(1)})
                       </span>
                     </span></>
@@ -337,7 +337,7 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
                       <><Loader2 className="w-4 h-4 animate-spin" /> 영상 클립 생성 중... (수분 소요)</>
                     ) : (
                       <>
-                        <Video className="w-4 h-4" /> Grok 영상 클립 생성하기
+                        <Video className="w-4 h-4" /> AI 영상 클립 생성하기
                         <span className="ml-auto text-xs opacity-70">
                           {(CREDIT_COSTS.videoClip * (genCount === "all" ? scenes.length : genCount)).toLocaleString()} 크레딧
                         </span>

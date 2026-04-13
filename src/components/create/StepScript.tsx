@@ -202,7 +202,7 @@ export function StepScript({ project, updateProject, onNext, onSave }: Props) {
           <div>
             <div className="text-lg">스크립트 생성</div>
             <div className="text-sm font-normal text-muted-foreground mt-0.5">
-              Claude AI가 주제에 맞는 영상 대본을 작성합니다
+              AI가 주제에 맞는 영상 대본을 작성합니다
             </div>
           </div>
         </CardTitle>
