@@ -260,10 +260,19 @@ async function buildHighlightIntro({ mainVideoFile, audioDuration, keyPhrase, in
   const mainFwd = mainVideoFile.replace(/\\/g, "/");
   const introFwd = introFile.replace(/\\/g, "/");
   const vf = [
-    `scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1`,
-    `drawtext=text='${safeText}'${fontFilePart}:fontsize=52:fontcolor=white:x=(w-tw)/2:y=(h-th)/2:box=1:boxcolor=black@0.5:boxborderw=20`,
-    `fade=t=in:st=0:d=1`,
-    `fade=t=out:st=${INTRO_DURATION - 1}:d=1`,
+    // 1. Scale to fill (no side bars), then crop to exact 1280x720
+    `scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,setsar=1`,
+    // 2. Cinematic color grade: higher contrast, desaturated, slightly darker
+    `eq=contrast=1.15:saturation=0.65:brightness=-0.04`,
+    // 3. Letterbox: crop to 2.35:1 then pad back with black bars (cinema look)
+    `crop=1280:544:0:88,pad=1280:720:0:88:color=black`,
+    // 4. Dark semi-transparent band as text backdrop
+    `drawbox=x=0:y=300:w=1280:h=120:color=black@0.65:t=fill`,
+    // 5. Key phrase with strong shadow (no ugly box border)
+    `drawtext=text='${safeText}'${fontFilePart}:fontsize=62:fontcolor=white:x=(w-tw)/2:y=(h-th)/2:shadowx=4:shadowy=4:shadowcolor=black@0.95`,
+    // 6. Fade in/out (snappier)
+    `fade=t=in:st=0:d=0.7`,
+    `fade=t=out:st=${INTRO_DURATION - 0.7}:d=0.7`,
   ].join(",");
   let useMusicFile = false;
   let musicFileFwd = "";
