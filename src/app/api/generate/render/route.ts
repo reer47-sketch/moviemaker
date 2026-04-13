@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
         });
 
         const { finalVideoFile, introAdded } = await applyIntro({
-          mainVideoFile, audioDuration, keyPhrase, introMusicId, addHighlightIntro, FFMPEG, ts, tmpDir,
+          mainVideoFile, audioDuration, keyPhrase, introMusicId, addHighlightIntro, FFMPEG, ts, tmpDir, W, H,
         });
 
         const supabase = createServiceClient();
@@ -207,9 +207,9 @@ export async function POST(req: NextRequest) {
     console.log("[render] FFmpeg render, duration:", audioDuration, "scenes:", scenes.length);
     await execAsync(mainCmd, { timeout: 300000, maxBuffer: 50 * 1024 * 1024 });
 
-    const { finalVideoFile, introAdded } = isShorts
-      ? { finalVideoFile: mainVideoFile, introAdded: false }
-      : await applyIntro({ mainVideoFile, audioDuration, keyPhrase, introMusicId, addHighlightIntro, FFMPEG, ts, tmpDir });
+    const { finalVideoFile, introAdded } = await applyIntro({
+      mainVideoFile, audioDuration, keyPhrase, introMusicId, addHighlightIntro, FFMPEG, ts, tmpDir, W, H,
+    });
 
     const supabase = createServiceClient();
     const videoBuffer = await fs.readFile(finalVideoFile);
@@ -255,15 +255,15 @@ async function generateTextSlide({ scene, slideFile, fontPath, FFMPEG, W = 1280,
   await execAsync(cmd, { timeout: 30000, maxBuffer: 10 * 1024 * 1024 });
 }
 
-async function applyIntro({ mainVideoFile, audioDuration, keyPhrase, introMusicId, addHighlightIntro, FFMPEG, ts, tmpDir }: {
+async function applyIntro({ mainVideoFile, audioDuration, keyPhrase, introMusicId, addHighlightIntro, FFMPEG, ts, tmpDir, W, H }: {
   mainVideoFile: string; audioDuration: number; keyPhrase: string; introMusicId: string;
-  addHighlightIntro: boolean; FFMPEG: string; ts: number; tmpDir: string;
+  addHighlightIntro: boolean; FFMPEG: string; ts: number; tmpDir: string; W: number; H: number;
 }): Promise<{ finalVideoFile: string; introAdded: boolean }> {
   if (!addHighlightIntro || !keyPhrase) return { finalVideoFile: mainVideoFile, introAdded: false };
   try {
     const introFile = path.join(tmpDir, `intro-${ts}.mp4`);
     const combinedFile = path.join(tmpDir, `combined-${ts}.mp4`);
-    await buildHighlightIntro({ mainVideoFile, audioDuration, keyPhrase, introMusicId, FFMPEG, introFile, tmpDir, ts });
+    await buildHighlightIntro({ mainVideoFile, audioDuration, keyPhrase, introMusicId, FFMPEG, introFile, tmpDir, ts, W, H });
     await concatenateVideos({ introFile, mainVideoFile, outputFile: combinedFile, FFMPEG });
     await fs.unlink(introFile).catch(() => {});
     return { finalVideoFile: combinedFile, introAdded: true };
@@ -273,29 +273,41 @@ async function applyIntro({ mainVideoFile, audioDuration, keyPhrase, introMusicI
   }
 }
 
-async function buildHighlightIntro({ mainVideoFile, audioDuration, keyPhrase, introMusicId, FFMPEG, introFile, tmpDir, ts }: {
+async function buildHighlightIntro({ mainVideoFile, audioDuration, keyPhrase, introMusicId, FFMPEG, introFile, tmpDir, ts, W, H }: {
   mainVideoFile: string; audioDuration: number; keyPhrase: string;
-  introMusicId: string; FFMPEG: string; introFile: string; tmpDir: string; ts: number;
+  introMusicId: string; FFMPEG: string; introFile: string; tmpDir: string; ts: number; W: number; H: number;
 }): Promise<void> {
   const startSec = Math.max(0, Math.min(audioDuration * 0.25, audioDuration - INTRO_DURATION - 1));
-  const fontAbsPath = path.join(process.cwd(), "public", "fonts", "NanumGothic.ttf");
+  const isVertical = H > W;
+
+  // Use ExtraBold for Shorts, regular for landscape
+  const boldFontPath = path.join(process.cwd(), "public", "fonts", "NanumGothic-ExtraBold.ttf");
+  const regularFontPath = path.join(process.cwd(), "public", "fonts", "NanumGothic.ttf");
   let fontFilePart = "";
-  try { await fs.access(fontAbsPath); fontFilePart = `:fontfile='${fontAbsPath.replace(/\\/g, "/")}'`; } catch {}
+  try {
+    await fs.access(isVertical ? boldFontPath : regularFontPath);
+    fontFilePart = `:fontfile='${(isVertical ? boldFontPath : regularFontPath).replace(/\\/g, "/")}'`;
+  } catch {}
+
   const safeText = escapeDrawtext(keyPhrase);
   const mainFwd = mainVideoFile.replace(/\\/g, "/");
   const introFwd = introFile.replace(/\\/g, "/");
-  const vf = [
-    // 1. Scale to fill (no side bars), then crop to exact 1280x720
-    `scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,setsar=1`,
-    // 2. Cinematic color grade: higher contrast, desaturated, slightly darker
+
+  const vf = isVertical ? [
+    // Shorts intro: fill vertical frame, color grade, centered text band
+    `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1`,
     `eq=contrast=1.15:saturation=0.65:brightness=-0.04`,
-    // 3. Letterbox: crop to 2.35:1 then pad back with black bars (cinema look)
+    `drawbox=x=0:y=${Math.floor(H / 2) - 65}:w=${W}:h=130:color=black@0.65:t=fill`,
+    `drawtext=text='${safeText}'${fontFilePart}:fontsize=58:fontcolor=white:borderw=5:bordercolor=white:x=(w-tw)/2:y=(h-th)/2:shadowx=5:shadowy=5:shadowcolor=black@0.95`,
+    `fade=t=in:st=0:d=0.7`,
+    `fade=t=out:st=${INTRO_DURATION - 0.7}:d=0.7`,
+  ].join(",") : [
+    // Landscape intro: cinematic letterbox + color grade
+    `scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,setsar=1`,
+    `eq=contrast=1.15:saturation=0.65:brightness=-0.04`,
     `crop=1280:544:0:88,pad=1280:720:0:88:color=black`,
-    // 4. Dark semi-transparent band as text backdrop
     `drawbox=x=0:y=300:w=1280:h=120:color=black@0.65:t=fill`,
-    // 5. Key phrase with strong shadow (no ugly box border)
     `drawtext=text='${safeText}'${fontFilePart}:fontsize=62:fontcolor=white:x=(w-tw)/2:y=(h-th)/2:shadowx=4:shadowy=4:shadowcolor=black@0.95`,
-    // 6. Fade in/out (snappier)
     `fade=t=in:st=0:d=0.7`,
     `fade=t=out:st=${INTRO_DURATION - 0.7}:d=0.7`,
   ].join(",");
