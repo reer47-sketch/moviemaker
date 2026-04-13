@@ -73,7 +73,7 @@ function mapScriptToWordTimestamps(
 
 export async function POST(req: NextRequest) {
   try {
-    const { audioUrl, videoUrl, script, style, fontSize, fontName, introOffset = 0, language = "ko" } =
+    const { audioUrl, videoUrl, script, style, fontSize, fontName, subtitlePosition = 50, introOffset = 0, language = "ko" } =
       await req.json();
 
     if (!audioUrl || !videoUrl) {
@@ -136,6 +136,7 @@ export async function POST(req: NextRequest) {
       style: style ?? "white",
       fontSize: fontSize ?? 24,
       fontName: fontName ?? "",
+      subtitlePosition: subtitlePosition ?? 50,
     });
 
     return NextResponse.json({ subtitles: finalSubtitles, subtitledVideoUrl });
@@ -175,7 +176,7 @@ function escapeDrawtext(t: string): string {
 async function burnSubtitles(
   videoUrl: string,
   subtitles: SubtitleEntry[],
-  options: { style: string; fontSize: number; fontName: string }
+  options: { style: string; fontSize: number; fontName: string; subtitlePosition: number }
 ): Promise<string> {
   const ffmpegInstaller = await import("@ffmpeg-installer/ffmpeg");
   const FFMPEG = `"${ffmpegInstaller.path}"`;
@@ -190,7 +191,7 @@ async function burnSubtitles(
     if (!videoRes.ok) throw new Error(`비디오 다운로드 실패: ${videoRes.status}`);
     await fs.writeFile(tempVideo, Buffer.from(await videoRes.arrayBuffer()));
 
-    const { style, fontSize } = options;
+    const { style, fontSize, subtitlePosition } = options;
 
     // Detect video width via ffprobe to handle vertical (Shorts) videos
     const ffprobeInstaller = await import("@ffprobe-installer/ffprobe");
@@ -229,7 +230,7 @@ async function burnSubtitles(
         `:fontsize=${fontSize}` +
         `:fontcolor=${fontcolor}` +
         `:x=(w-tw)/2` +
-        `:y=h-th-50`;
+        `:y=h-th-${subtitlePosition}`;
 
       if (style === "outline") {
         f += `:shadowcolor=black@0.8:shadowx=2:shadowy=2`;

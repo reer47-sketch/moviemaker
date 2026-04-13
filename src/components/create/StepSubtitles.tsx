@@ -42,6 +42,7 @@ export function StepSubtitles({ project, updateProject, onNext, onPrev, onSave }
   const [selectedStyle, setSelectedStyle] = useState("white");
   const [fontSize, setFontSize] = useState(24);
   const [fontName, setFontName] = useState("");
+  const [subtitlePosition, setSubtitlePosition] = useState(50);
   const [errorMsg, setErrorMsg] = useState("");
   const [subtitledVideoUrl, setSubtitledVideoUrl] = useState(
     project.subtitledVideoUrl ?? ""
@@ -63,6 +64,7 @@ export function StepSubtitles({ project, updateProject, onNext, onPrev, onSave }
           style: selectedStyle,
           fontSize,
           fontName,
+          subtitlePosition,
           introOffset: project.introAdded ? 6 : 0,
           language: project.language ?? "ko",
         }),
@@ -145,6 +147,28 @@ export function StepSubtitles({ project, updateProject, onNext, onPrev, onSave }
           <div className="flex justify-between text-xs text-muted-foreground">
             <span>작게 (14)</span>
             <span>크게 (44)</span>
+          </div>
+        </div>
+
+        {/* Subtitle position */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium">자막 위치</label>
+            <span className="text-sm font-mono text-primary">
+              {subtitlePosition <= 60 ? "하단" : subtitlePosition <= 160 ? "하단 위" : subtitlePosition <= 280 ? "중간" : "상단"}
+            </span>
+          </div>
+          <Slider
+            min={30}
+            max={400}
+            step={10}
+            value={[subtitlePosition]}
+            onValueChange={(v) => setSubtitlePosition(Array.isArray(v) ? v[0] : v)}
+            className="w-full"
+          />
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>하단</span>
+            <span>상단</span>
           </div>
         </div>
 
