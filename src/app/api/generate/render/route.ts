@@ -30,7 +30,12 @@ export async function POST(req: NextRequest) {
     const {
       scenes, audioUrl, imageUrls,
       keyPhrase = "", introMusicId = "", addHighlightIntro = false,
+      topic = "", duration = "long",
     } = await req.json();
+
+    const isShorts = duration === "short";
+    const W = isShorts ? 720 : 1280;
+    const H = isShorts ? 1280 : 720;
 
     if (!scenes || !audioUrl) {
       return NextResponse.json({ error: "필요한 데이터가 없습니다" }, { status: 400 });
@@ -144,7 +149,7 @@ export async function POST(req: NextRequest) {
       if (isSlide || !url) {
         // Generate text slide image using FFmpeg
         const slideFile = path.join(tmpDir, `slide-${ts}-${i}.jpg`);
-        await generateTextSlide({ scene, slideFile, fontPath: hasFontFile ? fontAbsPath : "", FFMPEG });
+        await generateTextSlide({ scene, slideFile, fontPath: hasFontFile ? fontAbsPath : "", FFMPEG, W, H });
         mediaFiles.push({ file: slideFile, isVideo: false });
       } else {
         const res = await fetch(url);
@@ -169,10 +174,26 @@ export async function POST(req: NextRequest) {
       isVideo ? `-stream_loop -1 -t ${dur} -i "${file}"` : `-loop 1 -t ${dur} -i "${file}"`
     ).join(" ");
     const filterParts = mediaFiles.map((_, i) =>
-      `[${i}:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=25[v${i}]`
+      `[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=25[v${i}]`
     );
     const concatInputs = mediaFiles.map((_, i) => `[v${i}]`).join("");
-    const filterComplex = [...filterParts, `${concatInputs}concat=n=${n}:v=1:a=0[vout]`].join(";");
+
+    // Shorts: add topic text overlay at top
+    let finalConcatFilter: string;
+    if (isShorts && topic?.trim()) {
+      const topicTrunc = topic.trim().substring(0, 16) + (topic.trim().length > 16 ? ".." : "");
+      const safeTopic = escapeDrawtext(topicTrunc);
+      const fontPart = hasFontFile ? `:fontfile='${fontAbsPath.replace(/\\/g, "/")}'` : "";
+      finalConcatFilter = [
+        `${concatInputs}concat=n=${n}:v=1:a=0[vconcat]`,
+        `[vconcat]drawbox=x=0:y=0:w=${W}:h=180:color=black@0.55:t=fill` +
+        `,drawtext=text='${safeTopic}'${fontPart}:fontsize=54:fontcolor=white:x=(w-tw)/2:y=72:shadowx=4:shadowy=4:shadowcolor=black@0.95[vout]`,
+      ].join(";");
+    } else {
+      finalConcatFilter = `${concatInputs}concat=n=${n}:v=1:a=0[vout]`;
+    }
+
+    const filterComplex = [...filterParts, finalConcatFilter].join(";");
 
     const mainVideoFile = path.join(tmpDir, `video-${ts}.mp4`);
     const audioFileFwd = audioFile.replace(/\\/g, "/");
@@ -184,9 +205,9 @@ export async function POST(req: NextRequest) {
     console.log("[render] FFmpeg render, duration:", audioDuration, "scenes:", scenes.length);
     await execAsync(mainCmd, { timeout: 300000, maxBuffer: 50 * 1024 * 1024 });
 
-    const { finalVideoFile, introAdded } = await applyIntro({
-      mainVideoFile, audioDuration, keyPhrase, introMusicId, addHighlightIntro, FFMPEG, ts, tmpDir,
-    });
+    const { finalVideoFile, introAdded } = isShorts
+      ? { finalVideoFile: mainVideoFile, introAdded: false }
+      : await applyIntro({ mainVideoFile, audioDuration, keyPhrase, introMusicId, addHighlightIntro, FFMPEG, ts, tmpDir });
 
     const supabase = createServiceClient();
     const videoBuffer = await fs.readFile(finalVideoFile);
@@ -209,11 +230,13 @@ export async function POST(req: NextRequest) {
   }
 }
 
-async function generateTextSlide({ scene, slideFile, fontPath, FFMPEG }: {
+async function generateTextSlide({ scene, slideFile, fontPath, FFMPEG, W = 1280, H = 720 }: {
   scene: { title: string; content: string };
   slideFile: string;
   fontPath: string;
   FFMPEG: string;
+  W?: number;
+  H?: number;
 }): Promise<void> {
   const fontPart = fontPath ? `:fontfile='${fontPath.replace(/\\/g, "/")}'` : "";
   const safeTitle = escapeDrawtext(scene.title.substring(0, 30));
@@ -226,7 +249,7 @@ async function generateTextSlide({ scene, slideFile, fontPath, FFMPEG }: {
     `drawtext=text='${safeContent}'${fontPart}:fontsize=28:fontcolor=0xaaaaaa:x=(w-tw)/2:y=(h/2)+40`,
   ].join(",");
 
-  const cmd = `${FFMPEG} -f lavfi -i "color=c=0x0f172a:s=1280x720:r=25" -vf "${vf}" -vframes 1 "${outFwd}" -y`;
+  const cmd = `${FFMPEG} -f lavfi -i "color=c=0x0f172a:s=${W}x${H}:r=25" -vf "${vf}" -vframes 1 "${outFwd}" -y`;
   await execAsync(cmd, { timeout: 30000, maxBuffer: 10 * 1024 * 1024 });
 }
 

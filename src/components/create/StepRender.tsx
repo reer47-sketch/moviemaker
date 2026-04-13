@@ -87,6 +87,8 @@ export function StepRender({ project, updateProject, onNext, onPrev, onSave }: P
           keyPhrase: addHighlightIntro ? (project.keyPhrase ?? "") : "",
           introMusicId: addHighlightIntro ? introMusicId : "",
           addHighlightIntro,
+          topic: project.topic ?? "",
+          duration: project.duration ?? "short",
         }),
       });
       const data = await res.json();
@@ -396,7 +398,7 @@ export function StepRender({ project, updateProject, onNext, onPrev, onSave }: P
               </div>
               <Badge variant="outline" className="ml-auto bg-emerald-500/10 text-emerald-400 border-emerald-500/20">완료</Badge>
             </div>
-            <div className="aspect-video rounded-xl overflow-hidden bg-muted flex items-center justify-center">
+            <div className={`rounded-xl overflow-hidden bg-muted flex items-center justify-center ${project.duration === "short" ? "aspect-[9/16] max-w-[260px] mx-auto" : "aspect-video"}`}>
               <video src={videoUrl} controls className="w-full h-full" />
             </div>
           </div>
