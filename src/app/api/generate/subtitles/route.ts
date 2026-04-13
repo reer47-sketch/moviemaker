@@ -33,7 +33,15 @@ function mapScriptToWordTimestamps(
   const sentences = splitIntoSentences(script);
   if (!sentences.length) return [];
 
-  const totalChars = script.replace(/\s+/g, "").length;
+  // Map by TIME ratio, not word index.
+  // Character count is roughly proportional to speech duration across all TTS engines
+  // (including Supertone chunked audio). Using word index assumes uniform per-word
+  // duration which causes systematic sync drift.
+  const speechStart = spokenWords[0].start;
+  const speechEnd = spokenWords[spokenWords.length - 1].end;
+  const totalSpeechDuration = speechEnd - speechStart;
+
+  const totalChars = sentences.reduce((s, sen) => s + sen.replace(/\s+/g, "").length, 0);
   let charAccum = 0;
 
   const entries = sentences.map((sentence) => {
@@ -42,20 +50,23 @@ function mapScriptToWordTimestamps(
     charAccum += sentenceChars;
     const endRatio = Math.min(charAccum / totalChars, 1);
 
-    // Map character ratios → word index range
-    const startIdx = Math.floor(startRatio * spokenWords.length);
-    const endIdx = Math.min(
-      Math.ceil(endRatio * spokenWords.length) - 1,
-      spokenWords.length - 1
-    );
+    // Convert char ratio → estimated time
+    const estStart = speechStart + startRatio * totalSpeechDuration;
+    const estEnd   = speechStart + endRatio   * totalSpeechDuration;
 
-    const startWord = spokenWords[Math.max(startIdx, 0)];
-    const endWord = spokenWords[Math.max(endIdx, 0)];
+    // Find the word whose start is closest to estStart
+    const startWord = spokenWords.reduce((best, w) =>
+      Math.abs(w.start - estStart) < Math.abs(best.start - estStart) ? w : best
+    );
+    // Find the word whose end is closest to estEnd
+    const endWord = spokenWords.reduce((best, w) =>
+      Math.abs(w.end - estEnd) < Math.abs(best.end - estEnd) ? w : best
+    );
 
     return {
       start: Math.round(startWord.start * 1000) / 1000,
-      end: Math.round(endWord.end * 1000) / 1000,
-      text: sentence,
+      end:   Math.round(endWord.end   * 1000) / 1000,
+      text:  sentence,
     };
   });
 
