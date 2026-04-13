@@ -11,6 +11,29 @@ import {
 import type { VideoProject } from "@/app/create/page";
 import { DURATION_OPTIONS } from "@/lib/introMusic";
 
+const MOOD_GROUPS = [
+  {
+    label: "감정",
+    moods: ["따뜻한", "감성적", "슬픈", "로맨틱", "유머러스"],
+  },
+  {
+    label: "장르",
+    moods: ["스릴러", "공포", "판타지", "SF", "액션", "누아르"],
+  },
+  {
+    label: "스타일",
+    moods: ["시네마틱", "미니멀", "레트로", "몽환적", "신비로운"],
+  },
+  {
+    label: "목적",
+    moods: ["동기부여", "교육적", "설득적"],
+  },
+  {
+    label: "분위기",
+    moods: ["밝은", "어두운"],
+  },
+];
+
 type Props = {
   project: Partial<VideoProject>;
   updateProject: (data: Partial<VideoProject>) => void;
@@ -104,6 +127,13 @@ export function StepScript({ project, updateProject, onNext, onSave }: Props) {
   const [duration, setDuration] = useState(project.duration ?? "short");
   const [language, setLanguage] = useState(project.language ?? "ko");
   const [characterDescription, setCharacterDescription] = useState(project.characterDescription ?? "");
+  const [selectedMoods, setSelectedMoods] = useState<string[]>(project.moods ?? []);
+
+  const toggleMood = (mood: string) => {
+    setSelectedMoods((prev) =>
+      prev.includes(mood) ? prev.filter((m) => m !== mood) : prev.length < 3 ? [...prev, mood] : prev
+    );
+  };
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [fields, setFields] = useState<Record<string, string>>({});
   const [freeTopic, setFreeTopic] = useState(project.topic ?? "");
@@ -132,7 +162,7 @@ export function StepScript({ project, updateProject, onNext, onSave }: Props) {
       const res = await fetch("/api/generate/script", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic: prompt, duration, characterDescription, language }),
+        body: JSON.stringify({ topic: prompt, duration, characterDescription, language, moods: selectedMoods }),
       });
       const data = await res.json();
       if (!res.ok || !data.scenes) {
@@ -143,7 +173,7 @@ export function StepScript({ project, updateProject, onNext, onSave }: Props) {
       setScript(data.script);
       setScenes(data.scenes);
       setKeyPhrase(data.keyPhrase ?? "");
-      updateProject({ topic, script: data.script, scenes: data.scenes, keyPhrase: data.keyPhrase ?? "", duration, characterDescription, language });
+      updateProject({ topic, script: data.script, scenes: data.scenes, keyPhrase: data.keyPhrase ?? "", duration, characterDescription, language, moods: selectedMoods });
     } catch (e) {
       console.error(e);
       setScriptError("네트워크 오류가 발생했습니다");
@@ -234,6 +264,47 @@ export function StepScript({ project, updateProject, onNext, onSave }: Props) {
                 </button>
               );
             })}
+          </div>
+        </div>
+
+        {/* Mood selector */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium">무드 선택</label>
+            <span className="text-xs text-muted-foreground">
+              {selectedMoods.length > 0 ? (
+                <span className="text-primary">{selectedMoods.join(" · ")}</span>
+              ) : "최대 3개 선택 (선택 안 하면 기본 무드)"}
+            </span>
+          </div>
+          <div className="space-y-2">
+            {MOOD_GROUPS.map((group) => (
+              <div key={group.label} className="flex items-start gap-2">
+                <span className="text-[10px] text-muted-foreground pt-1.5 w-10 shrink-0">{group.label}</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {group.moods.map((mood) => {
+                    const active = selectedMoods.includes(mood);
+                    const disabled = !active && selectedMoods.length >= 3;
+                    return (
+                      <button
+                        key={mood}
+                        onClick={() => toggleMood(mood)}
+                        disabled={disabled}
+                        className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all
+                          ${active
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : disabled
+                              ? "border-border/30 text-muted-foreground/40 cursor-not-allowed"
+                              : "border-border/50 text-muted-foreground hover:border-primary/50 hover:text-foreground"
+                          }`}
+                      >
+                        {mood}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
