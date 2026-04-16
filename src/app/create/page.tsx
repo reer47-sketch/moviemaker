@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -52,12 +51,11 @@ export default function CreatePage() {
   const [currentStep, setCurrentStep] = useState(1);
   const [project, setProject] = useState<Partial<VideoProject>>({});
   const [draft, setDraft] = useState<DraftData | null>(null);
-  const searchParams = useSearchParams();
   const recipeDraftLoaded = useRef(false);
 
   // 레시피 앱에서 넘어온 draft 처리
   useEffect(() => {
-    const draftId = searchParams.get("draft");
+    const draftId = new URLSearchParams(window.location.search).get("draft");
     if (!draftId || recipeDraftLoaded.current) return;
     recipeDraftLoaded.current = true;
 
