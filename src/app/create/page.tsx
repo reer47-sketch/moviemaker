@@ -70,13 +70,21 @@ export default function CreatePage() {
           .eq("id", draftId)
           .single();
         if (error || !data) return;
+        const d = data as {
+          title: string;
+          script: string;
+          scenes: { title: string; content: string; imagePrompt?: string }[];
+          key_phrase: string;
+          character_description: string;
+          moods: string[];
+        };
         setProject({
-          topic: data.title,
-          script: data.script,
-          scenes: data.scenes,
-          keyPhrase: data.key_phrase,
-          characterDescription: data.character_description,
-          moods: data.moods,
+          topic: d.title,
+          script: d.script,
+          scenes: d.scenes,
+          keyPhrase: d.key_phrase,
+          characterDescription: d.character_description,
+          moods: d.moods,
           duration: "3min",
           language: "ko",
         });
