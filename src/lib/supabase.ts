@@ -16,8 +16,24 @@ export type Database = {
           expires_at: string;
           created_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["shared_drafts"]["Row"], "id" | "created_at">;
-        Update: Partial<Database["public"]["Tables"]["shared_drafts"]["Insert"]>;
+        Insert: {
+          title: string;
+          script: string;
+          scenes: { title: string; content: string; imagePrompt?: string }[];
+          key_phrase?: string;
+          character_description?: string;
+          moods?: string[];
+          expires_at: string;
+        };
+        Update: {
+          title?: string;
+          script?: string;
+          scenes?: { title: string; content: string; imagePrompt?: string }[];
+          key_phrase?: string;
+          character_description?: string;
+          moods?: string[];
+          expires_at?: string;
+        };
       };
       videos: {
         Row: {
