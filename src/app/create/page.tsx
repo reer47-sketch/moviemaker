@@ -91,7 +91,7 @@ export default function CreatePage() {
         console.error("Failed to load recipe draft:", e);
       }
     })();
-  }, [searchParams]);
+  }, []);
 
   // 페이지 로드 시 임시 저장본 확인
   useEffect(() => {
