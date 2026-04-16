@@ -86,7 +86,7 @@ export default function CreatePage() {
           duration: "3min",
           language: "ko",
         });
-        setCurrentStep(1); // 스크립트 단계에서 캐릭터 설정 후 다음으로
+        setCurrentStep(2);
       } catch (e) {
         console.error("Failed to load recipe draft:", e);
       }
