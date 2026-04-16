@@ -4,6 +4,21 @@ import { createBrowserClient as createSSRBrowserClient } from "@supabase/ssr";
 export type Database = {
   public: {
     Tables: {
+      shared_drafts: {
+        Row: {
+          id: string;
+          title: string;
+          script: string;
+          scenes: { title: string; content: string; imagePrompt?: string }[];
+          key_phrase: string;
+          character_description: string;
+          moods: string[];
+          expires_at: string;
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["shared_drafts"]["Row"], "id" | "created_at">;
+        Update: Partial<Database["public"]["Tables"]["shared_drafts"]["Insert"]>;
+      };
       videos: {
         Row: {
           id: string;

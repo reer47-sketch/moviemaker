@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -51,6 +52,40 @@ export default function CreatePage() {
   const [currentStep, setCurrentStep] = useState(1);
   const [project, setProject] = useState<Partial<VideoProject>>({});
   const [draft, setDraft] = useState<DraftData | null>(null);
+  const searchParams = useSearchParams();
+  const recipeDraftLoaded = useRef(false);
+
+  // 레시피 앱에서 넘어온 draft 처리
+  useEffect(() => {
+    const draftId = searchParams.get("draft");
+    if (!draftId || recipeDraftLoaded.current) return;
+    recipeDraftLoaded.current = true;
+
+    (async () => {
+      try {
+        const supabase = createBrowserClient();
+        const { data, error } = await supabase
+          .from("shared_drafts")
+          .select("*")
+          .eq("id", draftId)
+          .single();
+        if (error || !data) return;
+        setProject({
+          topic: data.title,
+          script: data.script,
+          scenes: data.scenes,
+          keyPhrase: data.key_phrase,
+          characterDescription: data.character_description,
+          moods: data.moods,
+          duration: "3min",
+          language: "ko",
+        });
+        setCurrentStep(2); // 스크립트 완료, 음성 단계로 바로 이동
+      } catch (e) {
+        console.error("Failed to load recipe draft:", e);
+      }
+    })();
+  }, [searchParams]);
 
   // 페이지 로드 시 임시 저장본 확인
   useEffect(() => {
