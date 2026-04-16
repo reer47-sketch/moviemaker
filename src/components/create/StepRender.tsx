@@ -1,6 +1,13 @@
 "use client";
 
 import { useState } from "react";
+
+function lsGet<T>(key: string, fallback: T): T {
+  try { const v = localStorage.getItem(key); return v !== null ? (JSON.parse(v) as T) : fallback; } catch { return fallback; }
+}
+function lsSet(key: string, value: unknown) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+}
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -58,10 +65,10 @@ export function StepRender({ project, updateProject, onNext, onPrev, onSave }: P
 
   // Text style
   const isShorts = project.duration === "short";
-  const [keyFontSize, setKeyFontSize] = useState(58);
-  const [keyFontColor, setKeyFontColor] = useState("white");
-  const [keyFontName, setKeyFontName] = useState("NanumGothic-ExtraBold");
-  const [keyTextPosition, setKeyTextPosition] = useState(isShorts ? 8 : 42);
+  const [keyFontSize, setKeyFontSize] = useState(() => lsGet("mm_render_keyFontSize", 58));
+  const [keyFontColor, setKeyFontColor] = useState(() => lsGet("mm_render_keyFontColor", "white"));
+  const [keyFontName, setKeyFontName] = useState(() => lsGet("mm_render_keyFontName", "NanumGothic-ExtraBold"));
+  const [keyTextPosition, setKeyTextPosition] = useState(() => lsGet("mm_render_keyTextPosition", isShorts ? 8 : 42));
 
   const startRender = async () => {
     setLoading(true);
@@ -377,7 +384,7 @@ export function StepRender({ project, updateProject, onNext, onPrev, onSave }: P
                         ].map((c) => (
                           <button
                             key={c.value}
-                            onClick={() => setKeyFontColor(c.value)}
+                            onClick={() => { setKeyFontColor(c.value); lsSet("mm_render_keyFontColor", c.value); }}
                             title={c.label}
                             className={`w-6 h-6 rounded-full border-2 transition-all ${keyFontColor === c.value ? "border-primary scale-110" : "border-border/50 hover:border-border"}`}
                             style={{ backgroundColor: c.bg }}
@@ -397,7 +404,7 @@ export function StepRender({ project, updateProject, onNext, onPrev, onSave }: P
                         ].map((f) => (
                           <button
                             key={f.id}
-                            onClick={() => setKeyFontName(f.id)}
+                            onClick={() => { setKeyFontName(f.id); lsSet("mm_render_keyFontName", f.id); }}
                             className={`px-2.5 py-1 rounded-lg border text-xs font-medium transition-all
                               ${keyFontName === f.id
                                 ? "border-primary bg-primary/10 text-primary"
@@ -416,7 +423,7 @@ export function StepRender({ project, updateProject, onNext, onPrev, onSave }: P
                         <span className="text-xs font-mono text-primary">{keyFontSize}px</span>
                       </div>
                       <Slider min={28} max={80} step={2} value={[keyFontSize]}
-                        onValueChange={(v) => setKeyFontSize(Array.isArray(v) ? v[0] : v)} />
+                        onValueChange={(v) => { const val = Array.isArray(v) ? v[0] : v; setKeyFontSize(val); lsSet("mm_render_keyFontSize", val); }} />
                       <div className="flex justify-between text-xs text-muted-foreground">
                         <span>작게 (28)</span><span>크게 (80)</span>
                       </div>
@@ -431,7 +438,7 @@ export function StepRender({ project, updateProject, onNext, onPrev, onSave }: P
                         </span>
                       </div>
                       <Slider min={5} max={90} step={5} value={[keyTextPosition]}
-                        onValueChange={(v) => setKeyTextPosition(Array.isArray(v) ? v[0] : v)} />
+                        onValueChange={(v) => { const val = Array.isArray(v) ? v[0] : v; setKeyTextPosition(val); lsSet("mm_render_keyTextPosition", val); }} />
                       <div className="flex justify-between text-xs text-muted-foreground">
                         <span>상단</span><span>하단</span>
                       </div>

@@ -34,15 +34,22 @@ const FONT_OPTIONS = [
 
 type SubtitleEntry = { start: number; end: number; text: string };
 
+function lsGet<T>(key: string, fallback: T): T {
+  try { const v = localStorage.getItem(key); return v !== null ? (JSON.parse(v) as T) : fallback; } catch { return fallback; }
+}
+function lsSet(key: string, value: unknown) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+}
+
 export function StepSubtitles({ project, updateProject, onNext, onPrev, onSave }: Props) {
   const [justSaved, setJustSaved] = useState(false);
   const handleSave = () => { onSave(); setJustSaved(true); setTimeout(() => setJustSaved(false), 2000); };
   const [loading, setLoading] = useState(false);
   const [subtitles, setSubtitles] = useState<SubtitleEntry[]>([]);
-  const [selectedStyle, setSelectedStyle] = useState("white");
-  const [fontSize, setFontSize] = useState(24);
-  const [fontName, setFontName] = useState("");
-  const [subtitlePosition, setSubtitlePosition] = useState(50);
+  const [selectedStyle, setSelectedStyle] = useState(() => lsGet("mm_sub_style", "white"));
+  const [fontSize, setFontSize] = useState(() => lsGet("mm_sub_fontSize", 24));
+  const [fontName, setFontName] = useState(() => lsGet("mm_sub_fontName", ""));
+  const [subtitlePosition, setSubtitlePosition] = useState(() => lsGet("mm_sub_position", 50));
   const [errorMsg, setErrorMsg] = useState("");
   const [subtitledVideoUrl, setSubtitledVideoUrl] = useState(
     project.subtitledVideoUrl ?? ""
@@ -115,7 +122,7 @@ export function StepSubtitles({ project, updateProject, onNext, onPrev, onSave }
             {SUBTITLE_STYLES.map((style) => (
               <button
                 key={style.id}
-                onClick={() => setSelectedStyle(style.id)}
+                onClick={() => { setSelectedStyle(style.id); lsSet("mm_sub_style", style.id); }}
                 className={`p-3 rounded-xl border text-center transition-all
                   ${selectedStyle === style.id
                     ? "border-primary bg-primary/5"
@@ -141,7 +148,7 @@ export function StepSubtitles({ project, updateProject, onNext, onPrev, onSave }
             max={44}
             step={2}
             value={[fontSize]}
-            onValueChange={(v) => setFontSize(Array.isArray(v) ? v[0] : v)}
+            onValueChange={(v) => { const val = Array.isArray(v) ? v[0] : v; setFontSize(val); lsSet("mm_sub_fontSize", val); }}
             className="w-full"
           />
           <div className="flex justify-between text-xs text-muted-foreground">
@@ -163,7 +170,7 @@ export function StepSubtitles({ project, updateProject, onNext, onPrev, onSave }
             max={400}
             step={10}
             value={[subtitlePosition]}
-            onValueChange={(v) => setSubtitlePosition(Array.isArray(v) ? v[0] : v)}
+            onValueChange={(v) => { const val = Array.isArray(v) ? v[0] : v; setSubtitlePosition(val); lsSet("mm_sub_position", val); }}
             className="w-full"
           />
           <div className="flex justify-between text-xs text-muted-foreground">
@@ -179,7 +186,7 @@ export function StepSubtitles({ project, updateProject, onNext, onPrev, onSave }
             {FONT_OPTIONS.map((f) => (
               <button
                 key={f.id}
-                onClick={() => setFontName(f.id)}
+                onClick={() => { setFontName(f.id); lsSet("mm_sub_fontName", f.id); }}
                 className={`py-2 px-3 rounded-lg border text-xs font-medium transition-all
                   ${fontName === f.id
                     ? "border-primary bg-primary/10 text-primary"
