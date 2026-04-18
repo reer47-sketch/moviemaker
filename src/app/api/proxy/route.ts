@@ -8,19 +8,19 @@ export async function GET(req: NextRequest) {
   if (!res.ok) return NextResponse.json({ error: "fetch failed" }, { status: 502 });
 
   const contentType = res.headers.get("content-type") ?? "application/octet-stream";
-  const buffer = await res.arrayBuffer();
 
   const headers: Record<string, string> = {
     "Content-Type": contentType,
-    "Accept-Ranges": "bytes",
     "Cache-Control": "public, max-age=3600",
   };
 
-  const download = req.nextUrl.searchParams.get("download");
-  if (download) {
-    const filename = req.nextUrl.searchParams.get("filename") ?? "video.mp4";
-    headers["Content-Disposition"] = `attachment; filename="${filename}"`;
+  const filename = req.nextUrl.searchParams.get("filename");
+  if (filename) {
+    // RFC 5987 encoding — works on iOS Safari, Android, all modern browsers
+    const encoded = encodeURIComponent(filename);
+    headers["Content-Disposition"] = `attachment; filename*=UTF-8''${encoded}`;
   }
 
-  return new NextResponse(buffer, { headers });
+  // Stream the response body directly (no buffering)
+  return new NextResponse(res.body, { headers });
 }

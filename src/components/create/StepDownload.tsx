@@ -14,15 +14,6 @@ type Props = {
   project: Partial<VideoProject>;
 };
 
-async function getSignedDownloadUrl(url: string, filename: string): Promise<string> {
-  const res = await fetch("/api/download-url", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url, filename }),
-  });
-  const data = await res.json();
-  return data.signedUrl ?? url;
-}
 
 function cleanFilename(topic?: string, keyPhrase?: string): string {
   const raw = (keyPhrase?.trim() || topic?.trim() || "video").slice(0, 25);
@@ -39,10 +30,10 @@ export function StepDownload({ project }: Props) {
     setDownloading(true);
     try {
       const filename = cleanFilename(project.topic, project.keyPhrase) + ".mp4";
-      const signedUrl = await getSignedDownloadUrl(finalUrl, filename);
-      // Create a hidden <a> and click it — works on mobile too
+      // Use proxy with RFC 5987 Content-Disposition — works on iOS Safari too
+      const proxyUrl = `/api/proxy?url=${encodeURIComponent(finalUrl)}&filename=${encodeURIComponent(filename)}`;
       const a = document.createElement("a");
-      a.href = signedUrl;
+      a.href = proxyUrl;
       a.download = filename;
       document.body.appendChild(a);
       a.click();
