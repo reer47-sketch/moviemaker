@@ -29,15 +29,6 @@ type SupertoneVoice = {
   preview_url: string;
 };
 
-const VOICES = [
-  { id: "brian",   name: "Brian",   desc: "깊고 안정적인 남성 목소리",          gender: "남성" },
-  { id: "george",  name: "George",  desc: "따뜻하고 설득력 있는 스토리텔러",    gender: "남성" },
-  { id: "eric",    name: "Eric",    desc: "부드럽고 신뢰감 있는 남성 목소리",   gender: "남성" },
-  { id: "sarah",   name: "Sarah",   desc: "성숙하고 안정감 있는 여성 목소리",   gender: "여성" },
-  { id: "jessica", name: "Jessica", desc: "밝고 활기차며 친근한 여성 목소리",   gender: "여성" },
-  { id: "matilda", name: "Matilda", desc: "전문적이고 지식감 있는 여성 목소리", gender: "여성" },
-];
-
 const STYLE_LABELS: Record<string, string> = {
   neutral: "기본",
   happy: "밝게",
@@ -50,58 +41,48 @@ const STYLE_LABELS: Record<string, string> = {
 export function StepVoice({ project, updateProject, onNext, onPrev, onSave }: Props) {
   const [justSaved, setJustSaved] = useState(false);
   const handleSave = () => { onSave(); setJustSaved(true); setTimeout(() => setJustSaved(false), 2000); };
-  const [selectedVoice, setSelectedVoice] = useState(VOICES[0].id);
   const [loading, setLoading] = useState(false);
   const [audioUrl, setAudioUrl] = useState(project.audioUrl ?? "");
   const [playing, setPlaying] = useState(false);
   const [creditError, setCreditError] = useState("");
 
-  // Supertone state
-  const [useSupertone, setUseSupertone] = useState(false);
-  const [supertoneVoices, setSupertoneVoices] = useState<SupertoneVoice[]>([]);
-  const [supertoneVoiceId, setSupertoneVoiceId] = useState("");
-  const [supertoneStyle, setSupertoneStyle] = useState("neutral");
-  const [supertoneLoading, setSupertoneLoading] = useState(false);
+  const [voices, setVoices] = useState<SupertoneVoice[]>([]);
+  const [voiceId, setVoiceId] = useState("");
+  const [style, setStyle] = useState("neutral");
+  const [voicesLoading, setVoicesLoading] = useState(true);
   const [previewingId, setPreviewingId] = useState<string | null>(null);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  const proxyUrl = (url: string) =>
-    url ? `/api/proxy?url=${encodeURIComponent(url)}` : "";
+  const proxyUrl = (url: string) => url ? `/api/proxy?url=${encodeURIComponent(url)}` : "";
   const [progress, setProgress] = useState(0);
   const [playError, setPlayError] = useState("");
   const audioRef = useRef<HTMLAudioElement>(null);
 
-  // Load Supertone voices when toggle is enabled
   useEffect(() => {
-    if (!useSupertone || supertoneVoices.length > 0) return;
-    setSupertoneLoading(true);
     fetch("/api/voices/supertone")
       .then((r) => r.json())
       .then((d) => {
-        const voices: SupertoneVoice[] = d.voices ?? [];
-        setSupertoneVoices(voices);
-        if (voices.length > 0 && !supertoneVoiceId) {
-          setSupertoneVoiceId(voices[0].voice_id);
-          setSupertoneStyle(voices[0].styles?.[0] ?? "neutral");
+        const list: SupertoneVoice[] = d.voices ?? [];
+        setVoices(list);
+        if (list.length > 0) {
+          setVoiceId(list[0].voice_id);
+          setStyle(list[0].styles?.[0] ?? "neutral");
         }
       })
       .catch(console.error)
-      .finally(() => setSupertoneLoading(false));
-  }, [useSupertone]);
+      .finally(() => setVoicesLoading(false));
+  }, []);
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || !audioUrl) return;
-
     audio.load();
     setPlaying(false);
     setProgress(0);
-
     const onEnded = () => setPlaying(false);
     const onTimeUpdate = () => {
       if (audio.duration) setProgress((audio.currentTime / audio.duration) * 100);
     };
-
     audio.addEventListener("ended", onEnded);
     audio.addEventListener("timeupdate", onTimeUpdate);
     return () => {
@@ -122,7 +103,6 @@ export function StepVoice({ project, updateProject, onNext, onPrev, onSave }: Pr
         await audio.play();
         setPlaying(true);
       } catch (err: any) {
-        console.error("Audio play failed:", err);
         setPlayError(err?.message ?? "재생 실패");
       }
     }
@@ -142,11 +122,9 @@ export function StepVoice({ project, updateProject, onNext, onPrev, onSave }: Pr
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           script: project.script,
-          voiceId: selectedVoice,
           duration: project.duration ?? "short",
-          useSupertone,
-          supertoneVoiceId,
-          supertoneStyle,
+          supertoneVoiceId: voiceId,
+          supertoneStyle: style,
         }),
       });
       const data = await res.json();
@@ -163,19 +141,14 @@ export function StepVoice({ project, updateProject, onNext, onPrev, onSave }: Pr
     }
   };
 
-  const handleNext = () => {
-    updateProject({ audioUrl });
-    onNext();
-  };
-
-  const selectedSupertoneVoice = supertoneVoices.find((v) => v.voice_id === supertoneVoiceId);
+  const selectedVoice = voices.find((v) => v.voice_id === voiceId);
 
   return (
     <Card className="bg-card border-border/50">
       <CardHeader>
         <CardTitle className="flex items-center gap-3">
-          <div className={`p-2 rounded-xl border ${useSupertone ? "bg-emerald-500/10 border-emerald-500/20" : "bg-blue-500/10 border-blue-500/20"}`}>
-            <Mic className={`w-5 h-5 ${useSupertone ? "text-emerald-400" : "text-blue-400"}`} />
+          <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+            <Mic className="w-5 h-5 text-emerald-400" />
           </div>
           <div>
             <div className="text-lg">음성 생성</div>
@@ -187,191 +160,125 @@ export function StepVoice({ project, updateProject, onNext, onPrev, onSave }: Pr
       </CardHeader>
       <CardContent className="space-y-6">
 
-        {/* 한국어 특화 Toggle */}
-        <div
-          className={`flex items-center justify-between p-3.5 rounded-xl border cursor-pointer transition-all duration-200 select-none
-            ${useSupertone
-              ? "bg-emerald-500/10 border-emerald-500/30"
-              : "bg-muted/30 border-border/50 hover:border-border"
-            }`}
-          onClick={() => setUseSupertone((v) => !v)}
-        >
-          <div className="flex items-center gap-2.5">
-            <span className="text-lg">🇰🇷</span>
-            <div>
-              <div className="text-sm font-medium flex items-center gap-2">
-                한국어 특화
-                <Badge className="text-xs bg-emerald-500/20 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20">
-                  Supertone
-                </Badge>
-              </div>
-              <div className="text-xs text-muted-foreground mt-0.5">
-                한국어에 최적화된 AI 음성을 사용합니다
-              </div>
+        {/* Voice Grid */}
+        <div className="space-y-3">
+          <label className="text-sm font-medium">목소리 선택</label>
+          {voicesLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              목소리 목록을 불러오는 중...
             </div>
-          </div>
-          <div className={`w-11 h-6 rounded-full transition-colors duration-200 relative ${useSupertone ? "bg-emerald-500" : "bg-muted"}`}>
-            <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all duration-200 ${useSupertone ? "left-[22px]" : "left-0.5"}`} />
-          </div>
-        </div>
-
-        {/* Supertone Voice Grid */}
-        {useSupertone && (
-          <div className="space-y-3">
-            <label className="text-sm font-medium">한국어 목소리 선택</label>
-            {supertoneLoading ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                목소리 목록을 불러오는 중...
-              </div>
-            ) : supertoneVoices.length === 0 ? (
-              <div className="text-sm text-muted-foreground py-2">
-                사용 가능한 한국어 목소리가 없습니다
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {supertoneVoices.map((voice) => {
-                  const isSelected = supertoneVoiceId === voice.voice_id;
-                  const isPreviewing = previewingId === voice.voice_id;
-                  const genderLabel = voice.gender === "male" ? "남성" : voice.gender === "female" ? "여성" : voice.gender;
-                  return (
-                    <button
-                      key={voice.voice_id}
-                      onClick={() => {
-                        setSupertoneVoiceId(voice.voice_id);
-                        setSupertoneStyle(voice.styles?.[0] ?? "neutral");
-                      }}
-                      className={`p-3 rounded-xl border text-left transition-all duration-200
-                        ${isSelected
-                          ? "border-emerald-500/50 bg-emerald-500/5"
-                          : "border-border/50 bg-muted/30 hover:border-border"
-                        }`}
-                    >
-                      {/* Thumbnail + name row */}
-                      <div className="flex items-center gap-2 mb-2">
-                        {voice.thumbnail_image_url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={voice.thumbnail_image_url}
-                            alt={voice.name}
-                            className="w-9 h-9 rounded-full object-cover shrink-0 border border-border/30"
-                          />
-                        ) : (
-                          <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${isSelected ? "bg-emerald-500/20" : "bg-muted"}`}>
-                            <Volume2 className={`w-4 h-4 ${isSelected ? "text-emerald-400" : "text-muted-foreground"}`} />
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium text-sm truncate">{voice.name}</div>
-                          {genderLabel && (
-                            <div className="text-[10px] text-muted-foreground">{genderLabel}{voice.age ? ` · ${voice.age}` : ""}</div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Description */}
-                      {voice.description && (
-                        <p className="text-xs text-muted-foreground leading-relaxed mb-2 line-clamp-2">
-                          {voice.description}
-                        </p>
-                      )}
-
-                      {/* use_case badge + preview button */}
-                      <div className="flex items-center gap-1.5 mt-1">
-                        {voice.use_case && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted border border-border/40 text-muted-foreground shrink-0">
-                            {voice.use_case}
-                          </span>
-                        )}
-                        {voice.preview_url && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (isPreviewing) {
-                                previewAudioRef.current?.pause();
-                                setPreviewingId(null);
-                              } else {
-                                if (previewAudioRef.current) {
-                                  previewAudioRef.current.pause();
-                                }
-                                const audio = new Audio(voice.preview_url);
-                                previewAudioRef.current = audio;
-                                audio.play().catch(console.error);
-                                setPreviewingId(voice.voice_id);
-                                audio.onended = () => setPreviewingId(null);
-                              }
-                            }}
-                            className={`ml-auto flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium border transition-colors
-                              ${isPreviewing
-                                ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400"
-                                : "bg-muted border-border/50 text-muted-foreground hover:border-emerald-500/40 hover:text-emerald-400"
-                              }`}
-                          >
-                            {isPreviewing
-                              ? <><Pause className="w-2.5 h-2.5" /> 중지</>
-                              : <><Play className="w-2.5 h-2.5" /> 미리듣기</>
-                            }
-                          </button>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Style Selector */}
-            {selectedSupertoneVoice && selectedSupertoneVoice.styles.length > 1 && (
-              <div className="space-y-2">
-                <label className="text-xs text-muted-foreground font-medium">말투 스타일</label>
-                <div className="flex flex-wrap gap-2">
-                  {selectedSupertoneVoice.styles.map((style) => (
-                    <button
-                      key={style}
-                      onClick={() => setSupertoneStyle(style)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 border
-                        ${supertoneStyle === style
-                          ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400"
-                          : "bg-muted/30 border-border/50 text-muted-foreground hover:border-border"
-                        }`}
-                    >
-                      {STYLE_LABELS[style] ?? style}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ElevenLabs Voice Grid (shown when Supertone is OFF) */}
-        {!useSupertone && (
-          <div className="space-y-3">
-            <label className="text-sm font-medium">목소리 선택</label>
+          ) : voices.length === 0 ? (
+            <div className="text-sm text-muted-foreground py-2">사용 가능한 목소리가 없습니다</div>
+          ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {VOICES.map((voice) => (
-                <button
-                  key={voice.id}
-                  onClick={() => setSelectedVoice(voice.id)}
-                  className={`p-3 rounded-xl border text-left transition-all duration-200
-                    ${selectedVoice === voice.id
-                      ? "border-primary bg-primary/5"
-                      : "border-border/50 bg-muted/30 hover:border-border"
-                    }`}
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${selectedVoice === voice.id ? "bg-primary/20" : "bg-muted"}`}>
-                      <Volume2 className={`w-4 h-4 ${selectedVoice === voice.id ? "text-primary" : "text-muted-foreground"}`} />
+              {voices.map((voice) => {
+                const isSelected = voiceId === voice.voice_id;
+                const isPreviewing = previewingId === voice.voice_id;
+                const genderLabel = voice.gender === "male" ? "남성" : voice.gender === "female" ? "여성" : voice.gender;
+                return (
+                  <button
+                    key={voice.voice_id}
+                    onClick={() => {
+                      setVoiceId(voice.voice_id);
+                      setStyle(voice.styles?.[0] ?? "neutral");
+                    }}
+                    className={`p-3 rounded-xl border text-left transition-all duration-200
+                      ${isSelected
+                        ? "border-emerald-500/50 bg-emerald-500/5"
+                        : "border-border/50 bg-muted/30 hover:border-border"
+                      }`}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      {voice.thumbnail_image_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={voice.thumbnail_image_url}
+                          alt={voice.name}
+                          className="w-9 h-9 rounded-full object-cover shrink-0 border border-border/30"
+                        />
+                      ) : (
+                        <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${isSelected ? "bg-emerald-500/20" : "bg-muted"}`}>
+                          <Volume2 className={`w-4 h-4 ${isSelected ? "text-emerald-400" : "text-muted-foreground"}`} />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm truncate">{voice.name}</div>
+                        {genderLabel && (
+                          <div className="text-[10px] text-muted-foreground">{genderLabel}{voice.age ? ` · ${voice.age}` : ""}</div>
+                        )}
+                      </div>
                     </div>
-                    <div className="font-medium text-sm">{voice.name}</div>
-                    <Badge variant="outline" className="text-xs ml-auto shrink-0">{voice.gender}</Badge>
-                  </div>
-                  <div className="text-xs text-muted-foreground leading-relaxed">{voice.desc}</div>
-                </button>
-              ))}
+
+                    {voice.description && (
+                      <p className="text-xs text-muted-foreground leading-relaxed mb-2 line-clamp-2">
+                        {voice.description}
+                      </p>
+                    )}
+
+                    <div className="flex items-center gap-1.5 mt-1">
+                      {voice.use_case && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted border border-border/40 text-muted-foreground shrink-0">
+                          {voice.use_case}
+                        </span>
+                      )}
+                      {voice.preview_url && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (isPreviewing) {
+                              previewAudioRef.current?.pause();
+                              setPreviewingId(null);
+                            } else {
+                              previewAudioRef.current?.pause();
+                              const audio = new Audio(voice.preview_url);
+                              previewAudioRef.current = audio;
+                              audio.play().catch(console.error);
+                              setPreviewingId(voice.voice_id);
+                              audio.onended = () => setPreviewingId(null);
+                            }
+                          }}
+                          className={`ml-auto flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium border transition-colors
+                            ${isPreviewing
+                              ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400"
+                              : "bg-muted border-border/50 text-muted-foreground hover:border-emerald-500/40 hover:text-emerald-400"
+                            }`}
+                        >
+                          {isPreviewing
+                            ? <><Pause className="w-2.5 h-2.5" /> 중지</>
+                            : <><Play className="w-2.5 h-2.5" /> 미리듣기</>
+                          }
+                        </button>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
-          </div>
-        )}
+          )}
+
+          {/* Style Selector */}
+          {selectedVoice && selectedVoice.styles.length > 1 && (
+            <div className="space-y-2">
+              <label className="text-xs text-muted-foreground font-medium">말투 스타일</label>
+              <div className="flex flex-wrap gap-2">
+                {selectedVoice.styles.map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setStyle(s)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 border
+                      ${style === s
+                        ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400"
+                        : "bg-muted/30 border-border/50 text-muted-foreground hover:border-border"
+                      }`}
+                  >
+                    {STYLE_LABELS[s] ?? s}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Script preview */}
         <div className="p-4 rounded-xl bg-muted/50 border border-border/30">
@@ -385,8 +292,8 @@ export function StepVoice({ project, updateProject, onNext, onPrev, onSave }: Pr
         <div className="space-y-2">
           <Button
             onClick={generateVoice}
-            disabled={loading || !project.script || (useSupertone && !supertoneVoiceId)}
-            className={`w-full gap-2 h-11 ${useSupertone ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}`}
+            disabled={loading || !project.script || !voiceId}
+            className="w-full gap-2 h-11 bg-emerald-600 hover:bg-emerald-700 text-white"
           >
             {loading ? (
               <><Loader2 className="w-4 h-4 animate-spin" /> 음성 생성 중...</>
@@ -410,12 +317,12 @@ export function StepVoice({ project, updateProject, onNext, onPrev, onSave }: Pr
 
         {/* Audio Player */}
         {audioUrl && (
-          <div className={`p-4 rounded-xl border space-y-3 ${useSupertone ? "bg-emerald-500/10 border-emerald-500/20" : "bg-blue-500/10 border-blue-500/20"}`}>
+          <div className="p-4 rounded-xl border space-y-3 bg-emerald-500/10 border-emerald-500/20">
             <audio ref={audioRef} src={proxyUrl(audioUrl)} preload="auto" />
             <div className="flex items-center gap-4">
               <button
                 onClick={togglePlay}
-                className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-colors ${useSupertone ? "bg-emerald-500 hover:bg-emerald-600" : "bg-blue-500 hover:bg-blue-600"}`}
+                className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-colors bg-emerald-500 hover:bg-emerald-600"
               >
                 {playing
                   ? <Pause className="w-4 h-4 text-white" />
@@ -423,35 +330,24 @@ export function StepVoice({ project, updateProject, onNext, onPrev, onSave }: Pr
                 }
               </button>
               <div className="flex-1 space-y-1">
-                <div className="text-sm font-medium">
-                  {useSupertone
-                    ? (selectedSupertoneVoice?.name ?? "한국어 목소리")
-                    : VOICES.find(v => v.id === selectedVoice)?.name + " 목소리"
-                  }
-                </div>
+                <div className="text-sm font-medium">{selectedVoice?.name ?? "목소리"}</div>
                 <div
-                  className={`h-1.5 rounded-full overflow-hidden cursor-pointer ${useSupertone ? "bg-emerald-500/20" : "bg-blue-500/20"}`}
+                  className="h-1.5 rounded-full overflow-hidden cursor-pointer bg-emerald-500/20"
                   onClick={(e) => {
                     const audio = audioRef.current;
                     if (!audio) return;
                     const rect = e.currentTarget.getBoundingClientRect();
-                    const ratio = (e.clientX - rect.left) / rect.width;
-                    audio.currentTime = ratio * audio.duration;
+                    audio.currentTime = ((e.clientX - rect.left) / rect.width) * audio.duration;
                   }}
                 >
-                  <div
-                    className={`h-full rounded-full transition-all ${useSupertone ? "bg-emerald-400" : "bg-blue-400"}`}
-                    style={{ width: `${progress}%` }}
-                  />
+                  <div className="h-full rounded-full transition-all bg-emerald-400" style={{ width: `${progress}%` }} />
                 </div>
               </div>
-              <Badge variant="outline" className={`shrink-0 ${useSupertone ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-blue-500/10 text-blue-400 border-blue-500/20"}`}>
+              <Badge variant="outline" className="shrink-0 bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
                 준비됨
               </Badge>
             </div>
-            {playError && (
-              <p className="text-xs text-destructive mt-1">에러: {playError}</p>
-            )}
+            {playError && <p className="text-xs text-destructive mt-1">에러: {playError}</p>}
           </div>
         )}
 
@@ -465,7 +361,7 @@ export function StepVoice({ project, updateProject, onNext, onPrev, onSave }: Pr
             <Save className="w-3.5 h-3.5" />
             {justSaved ? "저장됨 ✓" : "임시 저장"}
           </Button>
-          <Button onClick={handleNext} disabled={!audioUrl} className="gap-2">
+          <Button onClick={() => { updateProject({ audioUrl }); onNext(); }} disabled={!audioUrl} className="gap-2">
             다음: 이미지 생성
             <ChevronRight className="w-4 h-4" />
           </Button>
