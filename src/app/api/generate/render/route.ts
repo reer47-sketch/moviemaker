@@ -13,7 +13,7 @@ export const maxDuration = 300;
 
 function escapeDrawtext(t: string): string {
   return t
-    .normalize("NFD").replace(/[̀-ͯ]/g, "") // strip diacritics (é→e, ñ→n …)
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
     .replace(/\\/g, "\\\\")
     .replace(/\$/g, "\\$")
     .replace(/`/g, "\\`")
