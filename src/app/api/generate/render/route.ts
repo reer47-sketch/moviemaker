@@ -101,7 +101,6 @@ export async function POST(req: NextRequest) {
     const audioDuration = await getMediaDuration(ffmpegInstaller.path, audioFile);
 
     // ── FFmpeg path ──
-    const sharp = (await import("sharp")).default;
     type MediaFile = { file: string; isVideo: boolean };
     const mediaFiles: MediaFile[] = [];
     const urls: string[] = imageUrls ?? [];
@@ -135,8 +134,9 @@ export async function POST(req: NextRequest) {
           await fs.writeFile(vidFile, buf);
           mediaFiles.push({ file: vidFile, isVideo: true });
         } else {
+          // Write raw buffer — FFmpeg detects format from magic bytes, handles JPEG/PNG/WebP
           const imgFile = path.join(tmpDir, `img-${ts}-${i}.jpg`);
-          await sharp(buf).rotate().jpeg({ quality: 90 }).toFile(imgFile);
+          await fs.writeFile(imgFile, buf);
           mediaFiles.push({ file: imgFile, isVideo: false });
         }
       }
