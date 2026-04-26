@@ -13,12 +13,12 @@ export const maxDuration = 300;
 
 function escapeDrawtext(t: string): string {
   return t
-    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .replace(/\\/g, "\\\\")
     .replace(/\$/g, "\\$")
     .replace(/`/g, "\\`")
-    .replace(/"/g, ‘\\"’)
-    .replace(/’/g, "’")
+    .replace(/"/g, '\\"')
+    .replace(/'/g, "\u2019")
     .replace(/:/g, "\\:")
     .replace(/\{/g, "\\{")
     .replace(/\}/g, "\\}");
