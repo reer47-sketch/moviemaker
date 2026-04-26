@@ -65,14 +65,11 @@ export async function POST(req: NextRequest) {
     const creditResult = await deductCredits(req, CREDIT_COSTS.render);
     if (creditResult instanceof NextResponse) return creditResult;
 
-    // ffmpeg-static (7.x): has xfade + zoompan, but NO drawtext
-    const ffmpegRaw = (await import("ffmpeg-static")).default ?? "";
-    const ffmpegBin = ffmpegRaw.replace(/^\/ROOT\//, "/var/task/");
-    const FFMPEG = `"${ffmpegBin}"`;
-
-    // @ffmpeg-installer (4.0 era): has drawtext but no xfade — used for text overlays
+    // Single binary: @ffmpeg-installer (4.0 era) — has drawtext + zoompan
+    // xfade not available; crossfade implemented via overlay technique instead
     const ffmpegInstaller = await import("@ffmpeg-installer/ffmpeg");
-    const FFMPEG_DT = `"${ffmpegInstaller.path}"`;
+    const FFMPEG = `"${ffmpegInstaller.path}"`;
+    const FFMPEG_DT = FFMPEG;
 
     const ffprobeInstaller = await import("@ffprobe-installer/ffprobe");
     const ffmpegFluent = (await import("fluent-ffmpeg")).default;
@@ -167,10 +164,7 @@ export async function POST(req: NextRequest) {
     const n = scenes.length || 1;
     const secondsPerScene = audioDuration / Math.max(n, 1);
 
-    // Extend each segment to compensate for xfade overlap
-    const adjustedSec = transition === "fade" && n > 1
-      ? secondsPerScene + (n - 1) * XFADE_DURATION / n
-      : secondsPerScene;
+    const adjustedSec = secondsPerScene; // no overlap needed (fade-in/out, not xfade)
     const dur = adjustedSec.toFixed(3);
     const nFrames = Math.ceil(adjustedSec * 25);
 
@@ -218,22 +212,32 @@ export async function POST(req: NextRequest) {
       return `[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=25,setpts=PTS-STARTPTS[v${i}]`;
     });
 
-    // ffmpeg-static has no drawtext — apply Shorts overlay in a separate pass with FFMPEG_DT
     const concatInputs = mediaFiles.map((_, i) => `[v${i}]`).join("");
 
+    // Crossfade via fade-in/out on each clip + concat (xfade not available in @ffmpeg-installer)
+    // Each clip fades out at the end (except last) and fades in at the start (except first)
+    // FADE_DUR kept short (0.25s) so the black dip is barely visible
+    const FADE_DUR = 0.25;
     let transitionFilter: string;
     if (n === 1) {
       transitionFilter = `[v0]setpts=PTS-STARTPTS[vout]`;
     } else if (transition === "fade") {
-      const parts: string[] = [];
-      let prev = "v0";
-      for (let k = 1; k < n; k++) {
-        const offset = (k * (adjustedSec - XFADE_DURATION)).toFixed(3);
-        const out = k === n - 1 ? "vout" : `xf${k}`;
-        parts.push(`[${prev}][v${k}]xfade=transition=fade:duration=${XFADE_DURATION}:offset=${offset}[${out}]`);
-        prev = out;
-      }
-      transitionFilter = parts.join(";");
+      // Re-apply fade filters to the already-built [v0]..[vN-1] streams
+      const fadedParts = mediaFiles.map((_, i) => {
+        const fadeIn  = i > 0     ? `,fade=t=in:st=0:d=${FADE_DUR}` : "";
+        const fadeOut = i < n - 1 ? `,fade=t=out:st=${(adjustedSec - FADE_DUR).toFixed(3)}:d=${FADE_DUR}` : "";
+        if (!fadeIn && !fadeOut) return null;
+        return `[v${i}]${fadeIn || ""}${fadeOut || ""}[f${i}]`.replace(/^\[v\d+\],/, `[v${i}]`);
+      });
+      const fadedParts2 = mediaFiles.map((_, i) => {
+        const fadeIn  = i > 0     ? `fade=t=in:st=0:d=${FADE_DUR}` : "";
+        const fadeOut = i < n - 1 ? `fade=t=out:st=${(adjustedSec - FADE_DUR).toFixed(3)}:d=${FADE_DUR}` : "";
+        const filter  = [fadeIn, fadeOut].filter(Boolean).join(",");
+        if (!filter) return `[v${i}]copy[f${i}]`;
+        return `[v${i}]${filter}[f${i}]`;
+      });
+      const fadeInputs = mediaFiles.map((_, i) => `[f${i}]`).join("");
+      transitionFilter = fadedParts2.join(";") + `;${fadeInputs}concat=n=${n}:v=1:a=0[vout]`;
     } else {
       transitionFilter = `${concatInputs}concat=n=${n}:v=1:a=0[vout]`;
     }

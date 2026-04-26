@@ -91,8 +91,8 @@ export async function POST(req: NextRequest) {
     if (chunkFiles.length === 1) {
       finalBuffer = await fs.readFile(chunkFiles[0]);
     } else {
-      const ffmpegRaw = (await import("ffmpeg-static")).default ?? "";
-      const FFMPEG = `"${ffmpegRaw.replace(/^\/ROOT\//, "/var/task/")}"`;
+      const ffmpegInstaller = await import("@ffmpeg-installer/ffmpeg");
+      const FFMPEG = `"${ffmpegInstaller.path}"`;
 
       const listFile = path.join(tmpDir, `list-${ts}.txt`).replace(/\\/g, "/");
       const finalFile = path.join(tmpDir, `suptone-${ts}-final.mp3`).replace(/\\/g, "/");
