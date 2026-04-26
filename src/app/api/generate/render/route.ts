@@ -13,11 +13,12 @@ export const maxDuration = 300;
 
 function escapeDrawtext(t: string): string {
   return t
+    .normalize("NFD").replace(/[̀-ͯ]/g, "") // strip diacritics (é→e, ñ→n …)
     .replace(/\\/g, "\\\\")
     .replace(/\$/g, "\\$")
     .replace(/`/g, "\\`")
-    .replace(/"/g, '\\"')
-    .replace(/'/g, "’")
+    .replace(/"/g, ‘\\"’)
+    .replace(/’/g, "’")
     .replace(/:/g, "\\:")
     .replace(/\{/g, "\\{")
     .replace(/\}/g, "\\}");
@@ -205,7 +206,8 @@ export async function POST(req: NextRequest) {
     const filterParts = mediaFiles.map(({ isVideo }, i) => {
       if (!isVideo && kenBurns) {
         const kb = kenBurnsFilter(i, nFrames, W, H);
-        return `[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,fps=25,${kb},setsar=1,setpts=PTS-STARTPTS[v${i}]`;
+        // Fill mode: crop to fill the frame so zoompan works on real content, not black bars
+        return `[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},fps=25,${kb},setsar=1,setpts=PTS-STARTPTS[v${i}]`;
       }
       return `[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=25,setpts=PTS-STARTPTS[v${i}]`;
     });
