@@ -27,6 +27,27 @@ function escapeDrawtext(t: string): string {
 const INTRO_DURATION = 6;
 const XFADE_DURATION = 0.5;
 
+/** Get media duration by parsing ffmpeg -i stderr (replaces ffprobe) */
+async function getMediaDuration(ffmpegPath: string, filePath: string): Promise<number> {
+  let stderr = "";
+  try {
+    await execAsync(`"${ffmpegPath}" -i "${filePath.replace(/\\/g, "/")}"`, { timeout: 30000 });
+  } catch (e: any) { stderr = e.stderr ?? ""; }
+  const m = stderr.match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/);
+  if (m) return parseInt(m[1]) * 3600 + parseInt(m[2]) * 60 + parseFloat(m[3]);
+  return 30;
+}
+
+/** Get video width by parsing ffmpeg -i stderr */
+async function getVideoWidth(ffmpegPath: string, filePath: string): Promise<number> {
+  let stderr = "";
+  try {
+    await execAsync(`"${ffmpegPath}" -i "${filePath.replace(/\\/g, "/")}"`, { timeout: 30000 });
+  } catch (e: any) { stderr = e.stderr ?? ""; }
+  const m = stderr.match(/Video:.*?(\d{3,4})x(\d{3,4})/);
+  return m ? parseInt(m[1]) : 1280;
+}
+
 /** Ken Burns zoom/pan filter for a static image — pattern cycles across scenes */
 function kenBurnsFilter(sceneIdx: number, nFrames: number, W: number, H: number): string {
   // Input is scaled to 2× target before zoompan, so iw=2W, ih=2H
@@ -65,15 +86,10 @@ export async function POST(req: NextRequest) {
     const creditResult = await deductCredits(req, CREDIT_COSTS.render);
     if (creditResult instanceof NextResponse) return creditResult;
 
-    // Single binary: @ffmpeg-installer (4.0 era) — has drawtext + zoompan
-    // xfade not available; crossfade implemented via overlay technique instead
     const ffmpegInstaller = await import("@ffmpeg-installer/ffmpeg");
     const FFMPEG = `"${ffmpegInstaller.path}"`;
     const FFMPEG_DT = FFMPEG;
 
-    const ffprobeInstaller = await import("@ffprobe-installer/ffprobe");
-    const ffmpegFluent = (await import("fluent-ffmpeg")).default;
-    ffmpegFluent.setFfprobePath(ffprobeInstaller.path);
     const tmpDir = os.tmpdir();
     const ts = Date.now();
 
@@ -82,79 +98,7 @@ export async function POST(req: NextRequest) {
     const audioFile = path.join(tmpDir, `audio-${ts}.mp3`);
     await fs.writeFile(audioFile, Buffer.from(await audioRes.arrayBuffer()));
 
-    const audioDuration: number = await new Promise((resolve, reject) => {
-      ffmpegFluent.ffprobe(audioFile, (err: unknown, meta: { format: { duration?: number } }) => {
-        if (err) reject(err);
-        else resolve(meta.format.duration ?? 30);
-      });
-    });
-
-    // Check if any explicitly-set slide scenes
-    const hasSlides = scenes.some((s: { sceneType?: string }) => s.sceneType === "slide");
-
-    if (hasSlides) {
-      try {
-        const { bundle } = await import("@remotion/bundler");
-        const { renderMedia, selectComposition } = await import("@remotion/renderer");
-
-        const fps = 30;
-        const totalFrames = Math.ceil(audioDuration * fps);
-        const framesPerScene = Math.floor(totalFrames / scenes.length);
-
-        const remotionScenes = scenes.map((scene: { title: string; content: string; sceneType?: string }, i: number) => ({
-          title: scene.title,
-          content: scene.content,
-          sceneType: scene.sceneType ?? "slide",
-          imageUrl: imageUrls?.[i] ?? "",
-          startFrame: i * framesPerScene,
-          durationFrames: i === scenes.length - 1
-            ? totalFrames - i * framesPerScene
-            : framesPerScene,
-        }));
-
-        const bundled = await bundle({
-          entryPoint: path.join(process.cwd(), "src/remotion/root.tsx"),
-        });
-
-        const composition = await selectComposition({
-          serveUrl: bundled,
-          id: "VideoComposition",
-          inputProps: { scenes: remotionScenes, audioUrl },
-        });
-
-        const mainVideoFile = path.join(tmpDir, `video-${ts}.mp4`);
-
-        await renderMedia({
-          composition,
-          serveUrl: bundled,
-          codec: "h264",
-          outputLocation: mainVideoFile,
-          inputProps: { scenes: remotionScenes, audioUrl },
-        });
-
-        const { finalVideoFile, introAdded } = await applyIntro({
-          mainVideoFile, audioDuration, keyPhrase, introMusicId, addHighlightIntro,
-          FFMPEG, ts, tmpDir, W, H, keyFontSize, keyFontColor, keyFontName, keyTextPosition, introStyle,
-        });
-
-        const supabase = createServiceClient();
-        const videoBuffer = await fs.readFile(finalVideoFile);
-        const fileName = `videos/video-${ts}.mp4`;
-        const { error } = await supabase.storage.from("media").upload(fileName, videoBuffer, { contentType: "video/mp4" });
-        if (error) throw error;
-        const { data } = supabase.storage.from("media").getPublicUrl(fileName);
-
-        await Promise.all([
-          fs.unlink(audioFile).catch(() => {}),
-          fs.unlink(mainVideoFile).catch(() => {}),
-          finalVideoFile !== mainVideoFile ? fs.unlink(finalVideoFile).catch(() => {}) : Promise.resolve(),
-        ]);
-
-        return NextResponse.json({ videoUrl: data.publicUrl, introAdded });
-      } catch (remotionErr) {
-        console.error("[render] Remotion failed, falling back to FFmpeg:", remotionErr);
-      }
-    }
+    const audioDuration = await getMediaDuration(ffmpegInstaller.path, audioFile);
 
     // ── FFmpeg path ──
     const sharp = (await import("sharp")).default;

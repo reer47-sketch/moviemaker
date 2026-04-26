@@ -256,16 +256,13 @@ async function burnSubtitles(
 
     const { style, fontSize, subtitlePosition } = options;
 
-    // Detect video width via ffprobe to handle vertical (Shorts) videos
-    const ffprobeInstaller = await import("@ffprobe-installer/ffprobe");
-    const ffmpegFluent = (await import("fluent-ffmpeg")).default;
-    ffmpegFluent.setFfprobePath(ffprobeInstaller.path);
-    const videoWidth: number = await new Promise((resolve) => {
-      ffmpegFluent.ffprobe(tempVideo, (_err: unknown, meta: any) => {
-        const stream = meta?.streams?.find((s: any) => s.codec_type === "video");
-        resolve(stream?.width ?? 1280);
-      });
-    });
+    // Detect video width via ffmpeg -i stderr (replaces ffprobe)
+    let probeStderr = "";
+    try {
+      await execAsync(`${FFMPEG} -i "${tempVideo}"`, { timeout: 30000 });
+    } catch (e: any) { probeStderr = e.stderr ?? ""; }
+    const widthMatch = probeStderr.match(/Video:.*?(\d{3,4})x(\d{3,4})/);
+    const videoWidth = widthMatch ? parseInt(widthMatch[1]) : 1280;
     // chars per line: each Korean char ≈ fontSize px wide, with 10% padding
     const charsPerLine = Math.floor((videoWidth * 0.9) / (fontSize * 1.1));
 
