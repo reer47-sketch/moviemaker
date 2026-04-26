@@ -205,7 +205,8 @@ export async function POST(req: NextRequest) {
     const filterParts = mediaFiles.map(({ isVideo }, i) => {
       if (!isVideo && kenBurns) {
         const kb = kenBurnsFilter(i, nFrames, W, H);
-        return `[${i}:v]scale=${W * 2}:${H * 2}:force_original_aspect_ratio=decrease,pad=${W * 2}:${H * 2}:(ow-iw)/2:(oh-ih)/2,fps=25,${kb},setsar=1,setpts=PTS-STARTPTS[v${i}]`;
+        // Scale to target size first — zoompan zooms into that, no 2× pre-scale needed
+        return `[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,fps=25,${kb},setsar=1,setpts=PTS-STARTPTS[v${i}]`;
       }
       return `[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=25,setpts=PTS-STARTPTS[v${i}]`;
     });
