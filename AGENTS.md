@@ -52,12 +52,12 @@ command substitution inside double-quoted strings, silently corrupting the scrip
 - GOOD: write to a `.mjs` file, then `node script.mjs`, then delete the file
 - BAD:  `node -e "... .replace(/\`/g, ...) ..."` — backtick gets swallowed by bash
 
-## 6. FFmpeg dual-binary pattern (render route)
-**Rule:** `ffmpeg-static` 7.x and `@ffmpeg-installer` 4.0 each lack different filters. Always use both:
-- `ffmpeg-static` (FFMPEG var): xfade, zoompan, scale, concat — NO drawtext
-- `@ffmpeg-installer` (FFMPEG_DT var): drawtext, drawbox — NO xfade
-- Pattern: Pass 1 with ffmpeg-static (assembly), Pass 2 with @ffmpeg-installer (text overlay)
-- `applyIntro` and subtitle burn always use FFMPEG_DT (they need drawtext)
+## 6. FFmpeg binary: use ONLY @ffmpeg-installer — do NOT add ffmpeg-static
+**Rule:** `ffmpeg-static` (~85MB) + `@ffmpeg-installer` (~55MB) together exceed Vercel's 250MB limit.
+Use ONLY `@ffmpeg-installer/ffmpeg`. It has drawtext + zoompan. It lacks `xfade` — use
+fade-in/out per clip + concat as the crossfade substitute (0.25s, barely visible).
+- NEVER install `ffmpeg-static` — it breaks the Vercel deployment size limit.
+- Crossfade without xfade: add `fade=t=out:st=<end-T>:d=T` to each clip, `fade=t=in` to next, then concat.
 
 ## 5. Notion API with Korean text — always use Python/Node, never curl on Windows
 **Rule:** `curl` with inline Korean on Windows terminal (cp949) corrupts UTF-8 content in the
