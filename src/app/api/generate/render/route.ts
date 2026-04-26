@@ -65,14 +65,18 @@ export async function POST(req: NextRequest) {
     const creditResult = await deductCredits(req, CREDIT_COSTS.render);
     if (creditResult instanceof NextResponse) return creditResult;
 
+    // ffmpeg-static (7.x): has xfade + zoompan, but NO drawtext
     const ffmpegRaw = (await import("ffmpeg-static")).default ?? "";
-    // Vercel: ffmpeg-static resolves __dirname as /ROOT/ but files live at /var/task/
     const ffmpegBin = ffmpegRaw.replace(/^\/ROOT\//, "/var/task/");
+    const FFMPEG = `"${ffmpegBin}"`;
+
+    // @ffmpeg-installer (4.0 era): has drawtext but no xfade — used for text overlays
+    const ffmpegInstaller = await import("@ffmpeg-installer/ffmpeg");
+    const FFMPEG_DT = `"${ffmpegInstaller.path}"`;
+
     const ffprobeInstaller = await import("@ffprobe-installer/ffprobe");
     const ffmpegFluent = (await import("fluent-ffmpeg")).default;
     ffmpegFluent.setFfprobePath(ffprobeInstaller.path);
-
-    const FFMPEG = `"${ffmpegBin}"`;
     const tmpDir = os.tmpdir();
     const ts = Date.now();
 
@@ -214,31 +218,41 @@ export async function POST(req: NextRequest) {
       return `[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=25,setpts=PTS-STARTPTS[v${i}]`;
     });
 
-    const needsOverlay = isShorts && !!keyPhrase?.trim();
-    const baseLabel = needsOverlay ? "vconcat" : "vout";
+    // ffmpeg-static has no drawtext — apply Shorts overlay in a separate pass with FFMPEG_DT
     const concatInputs = mediaFiles.map((_, i) => `[v${i}]`).join("");
 
     let transitionFilter: string;
     if (n === 1) {
-      transitionFilter = `[v0]setpts=PTS-STARTPTS[${baseLabel}]`;
+      transitionFilter = `[v0]setpts=PTS-STARTPTS[vout]`;
     } else if (transition === "fade") {
-      // xfade: true crossfade (requires FFmpeg 4.3+ — now available via ffmpeg-static 5.x)
       const parts: string[] = [];
       let prev = "v0";
       for (let k = 1; k < n; k++) {
         const offset = (k * (adjustedSec - XFADE_DURATION)).toFixed(3);
-        const out = k === n - 1 ? baseLabel : `xf${k}`;
+        const out = k === n - 1 ? "vout" : `xf${k}`;
         parts.push(`[${prev}][v${k}]xfade=transition=fade:duration=${XFADE_DURATION}:offset=${offset}[${out}]`);
         prev = out;
       }
       transitionFilter = parts.join(";");
     } else {
-      transitionFilter = `${concatInputs}concat=n=${n}:v=1:a=0[${baseLabel}]`;
+      transitionFilter = `${concatInputs}concat=n=${n}:v=1:a=0[vout]`;
     }
 
-    // Shorts keyPhrase overlay on top of all scenes
-    let overlayFilter = "";
-    if (needsOverlay) {
+    const filterComplex = [...filterParts, transitionFilter].join(";");
+
+    const rawVideoFile = path.join(tmpDir, `raw-${ts}.mp4`);
+    const audioFileFwd = audioFile.replace(/\\/g, "/");
+    const mainCmd =
+      `${FFMPEG} ${inputs} -i "${audioFileFwd}" -filter_complex "${filterComplex}" ` +
+      `-map "[vout]" -map "${n}:a" -c:v libx264 -c:a aac -pix_fmt yuv420p -shortest -movflags +faststart "${rawVideoFile.replace(/\\/g, "/")}" -y`;
+
+    console.log("[render] FFmpeg render — scenes:", n, "kenBurns:", kenBurns, "transition:", transition);
+    await execAsync(mainCmd, { timeout: 300000, maxBuffer: 50 * 1024 * 1024 });
+
+    // Step 2: Shorts keyPhrase overlay via FFMPEG_DT (has drawtext, no xfade needed here)
+    let mainVideoFile = rawVideoFile;
+    if (isShorts && keyPhrase?.trim()) {
+      const overlayFile = path.join(tmpDir, `overlay-${ts}.mp4`);
       const titleText = keyPhrase.trim().substring(0, 18) + (keyPhrase.trim().length > 18 ? ".." : "");
       const safeTitle = escapeDrawtext(titleText);
       const shortsFont = path.join(process.cwd(), "public", "fonts", `${keyFontName}.ttf`);
@@ -246,25 +260,20 @@ export async function POST(req: NextRequest) {
       try { await fs.access(shortsFont); fontPart = `:fontfile='${shortsFont.replace(/\\/g, "/")}'`; } catch {}
       const centerY = Math.floor(H * keyTextPosition / 100);
       const boxY = Math.max(0, centerY - 65);
-      overlayFilter = `;[vconcat]drawbox=x=0:y=${boxY}:w=${W}:h=130:color=black@0.55:t=fill` +
-        `,drawtext=text='${safeTitle}'${fontPart}:fontsize=${keyFontSize}:fontcolor=${keyFontColor}:borderw=2:bordercolor=${keyFontColor}:x=(w-tw)/2:y=${centerY}-(th/2):shadowx=3:shadowy=3:shadowcolor=black@0.9[vout]`;
+      const vfOverlay =
+        `drawbox=x=0:y=${boxY}:w=${W}:h=130:color=black@0.55:t=fill` +
+        `,drawtext=text='${safeTitle}'${fontPart}:fontsize=${keyFontSize}:fontcolor=${keyFontColor}:borderw=2:bordercolor=${keyFontColor}:x=(w-tw)/2:y=${centerY}-(th/2):shadowx=3:shadowy=3:shadowcolor=black@0.9`;
+      const overlayCmd =
+        `${FFMPEG_DT} -i "${rawVideoFile.replace(/\\/g, "/")}" -vf "${vfOverlay}" ` +
+        `-c:v libx264 -c:a copy -pix_fmt yuv420p -movflags +faststart "${overlayFile.replace(/\\/g, "/")}" -y`;
+      await execAsync(overlayCmd, { timeout: 120000, maxBuffer: 50 * 1024 * 1024 });
+      await fs.unlink(rawVideoFile).catch(() => {});
+      mainVideoFile = overlayFile;
     }
-
-    const filterComplex = [...filterParts, transitionFilter + overlayFilter].join(";");
-
-    const mainVideoFile = path.join(tmpDir, `video-${ts}.mp4`);
-    const audioFileFwd = audioFile.replace(/\\/g, "/");
-    const mainVideoFileFwd = mainVideoFile.replace(/\\/g, "/");
-    const mainCmd =
-      `${FFMPEG} ${inputs} -i "${audioFileFwd}" -filter_complex "${filterComplex}" ` +
-      `-map "[vout]" -map "${n}:a" -c:v libx264 -c:a aac -pix_fmt yuv420p -shortest -movflags +faststart "${mainVideoFileFwd}" -y`;
-
-    console.log("[render] FFmpeg render — scenes:", n, "kenBurns:", kenBurns, "transition:", transition);
-    await execAsync(mainCmd, { timeout: 300000, maxBuffer: 50 * 1024 * 1024 });
 
     const { finalVideoFile, introAdded } = await applyIntro({
       mainVideoFile, audioDuration, keyPhrase, introMusicId, addHighlightIntro,
-      FFMPEG, ts, tmpDir, W, H, keyFontSize, keyFontColor, keyFontName, keyTextPosition, introStyle,
+      FFMPEG: FFMPEG_DT, ts, tmpDir, W, H, keyFontSize, keyFontColor, keyFontName, keyTextPosition, introStyle,
     });
 
     const supabase = createServiceClient();
@@ -277,7 +286,7 @@ export async function POST(req: NextRequest) {
     await Promise.all([
       fs.unlink(audioFile).catch(() => {}),
       fs.unlink(mainVideoFile).catch(() => {}),
-      finalVideoFile !== mainVideoFile ? fs.unlink(finalVideoFile).catch(() => {}) : Promise.resolve(),
+      (finalVideoFile !== mainVideoFile && finalVideoFile !== rawVideoFile) ? fs.unlink(finalVideoFile).catch(() => {}) : Promise.resolve(),
       ...mediaFiles.map(({ file }) => fs.unlink(file).catch(() => {})),
     ]);
 
