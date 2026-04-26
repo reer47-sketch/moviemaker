@@ -65,12 +65,14 @@ export async function POST(req: NextRequest) {
     const creditResult = await deductCredits(req, CREDIT_COSTS.render);
     if (creditResult instanceof NextResponse) return creditResult;
 
-    const ffmpegStatic = (await import("ffmpeg-static")).default;
+    const ffmpegRaw = (await import("ffmpeg-static")).default ?? "";
+    // Vercel: ffmpeg-static resolves __dirname as /ROOT/ but files live at /var/task/
+    const ffmpegBin = ffmpegRaw.replace(/^\/ROOT\//, "/var/task/");
     const ffprobeInstaller = await import("@ffprobe-installer/ffprobe");
     const ffmpegFluent = (await import("fluent-ffmpeg")).default;
     ffmpegFluent.setFfprobePath(ffprobeInstaller.path);
 
-    const FFMPEG = `"${ffmpegStatic}"`;
+    const FFMPEG = `"${ffmpegBin}"`;
     const tmpDir = os.tmpdir();
     const ts = Date.now();
 

@@ -240,8 +240,8 @@ async function burnSubtitles(
   subtitles: SubtitleEntry[],
   options: { style: string; fontSize: number; fontName: string; subtitlePosition: number }
 ): Promise<string> {
-  const ffmpegStatic = (await import("ffmpeg-static")).default;
-  const FFMPEG = `"${ffmpegStatic}"`;
+  const ffmpegRaw = (await import("ffmpeg-static")).default ?? "";
+  const FFMPEG = `"${ffmpegRaw.replace(/^\/ROOT\//, "/var/task/")}"`;
 
   const tmpDir = os.tmpdir();
   const ts = Date.now();
