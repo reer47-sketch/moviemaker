@@ -24,6 +24,7 @@ function escapeDrawtext(t: string): string {
 }
 
 const INTRO_DURATION = 6;
+const XFADE_DURATION = 0.5;
 
 /** Ken Burns zoom/pan filter for a static image — pattern cycles across scenes */
 function kenBurnsFilter(sceneIdx: number, nFrames: number, W: number, H: number): string {
@@ -63,12 +64,12 @@ export async function POST(req: NextRequest) {
     const creditResult = await deductCredits(req, CREDIT_COSTS.render);
     if (creditResult instanceof NextResponse) return creditResult;
 
-    const ffmpegInstaller = await import("@ffmpeg-installer/ffmpeg");
+    const ffmpegStatic = (await import("ffmpeg-static")).default;
     const ffprobeInstaller = await import("@ffprobe-installer/ffprobe");
     const ffmpegFluent = (await import("fluent-ffmpeg")).default;
     ffmpegFluent.setFfprobePath(ffprobeInstaller.path);
 
-    const FFMPEG = `"${ffmpegInstaller.path}"`;
+    const FFMPEG = `"${ffmpegStatic}"`;
     const tmpDir = os.tmpdir();
     const ts = Date.now();
 
@@ -159,9 +160,12 @@ export async function POST(req: NextRequest) {
     const n = scenes.length || 1;
     const secondsPerScene = audioDuration / Math.max(n, 1);
 
-    const dur = secondsPerScene.toFixed(3);
-    const nFrames = Math.ceil(secondsPerScene * 25);
-    const FADE_DUR = 0.4; // fade-in/out duration per clip
+    // Extend each segment to compensate for xfade overlap
+    const adjustedSec = transition === "fade" && n > 1
+      ? secondsPerScene + (n - 1) * XFADE_DURATION / n
+      : secondsPerScene;
+    const dur = adjustedSec.toFixed(3);
+    const nFrames = Math.ceil(adjustedSec * 25);
 
     const fontAbsPath = path.join(process.cwd(), "public", "fonts", "NanumGothic.ttf");
     let hasFontFile = false;
@@ -198,25 +202,35 @@ export async function POST(req: NextRequest) {
     ).join(" ");
 
     // Per-scene filters: Ken Burns for static images, plain scale for videos
-    // "fade" transition: add fade=in/out per clip, then concat (xfade needs FFmpeg 4.3+)
     const filterParts = mediaFiles.map(({ isVideo }, i) => {
-      const fadeIn  = transition === "fade" && i > 0     ? `,fade=t=in:st=0:d=${FADE_DUR}` : "";
-      const fadeOut = transition === "fade" && i < n - 1 ? `,fade=t=out:st=${(secondsPerScene - FADE_DUR).toFixed(3)}:d=${FADE_DUR}` : "";
       if (!isVideo && kenBurns) {
         const kb = kenBurnsFilter(i, nFrames, W, H);
-        return `[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,fps=25,${kb},setsar=1,setpts=PTS-STARTPTS${fadeIn}${fadeOut}[v${i}]`;
+        return `[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,fps=25,${kb},setsar=1,setpts=PTS-STARTPTS[v${i}]`;
       }
-      return `[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=25,setpts=PTS-STARTPTS${fadeIn}${fadeOut}[v${i}]`;
+      return `[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=25,setpts=PTS-STARTPTS[v${i}]`;
     });
 
     const needsOverlay = isShorts && !!keyPhrase?.trim();
     const baseLabel = needsOverlay ? "vconcat" : "vout";
     const concatInputs = mediaFiles.map((_, i) => `[v${i}]`).join("");
 
-    // Always concat — xfade filter not available in @ffmpeg-installer (FFmpeg 4.0 era)
-    const transitionFilter = n === 1
-      ? `[v0]setpts=PTS-STARTPTS[${baseLabel}]`
-      : `${concatInputs}concat=n=${n}:v=1:a=0[${baseLabel}]`;
+    let transitionFilter: string;
+    if (n === 1) {
+      transitionFilter = `[v0]setpts=PTS-STARTPTS[${baseLabel}]`;
+    } else if (transition === "fade") {
+      // xfade: true crossfade (requires FFmpeg 4.3+ — now available via ffmpeg-static 5.x)
+      const parts: string[] = [];
+      let prev = "v0";
+      for (let k = 1; k < n; k++) {
+        const offset = (k * (adjustedSec - XFADE_DURATION)).toFixed(3);
+        const out = k === n - 1 ? baseLabel : `xf${k}`;
+        parts.push(`[${prev}][v${k}]xfade=transition=fade:duration=${XFADE_DURATION}:offset=${offset}[${out}]`);
+        prev = out;
+      }
+      transitionFilter = parts.join(";");
+    } else {
+      transitionFilter = `${concatInputs}concat=n=${n}:v=1:a=0[${baseLabel}]`;
+    }
 
     // Shorts keyPhrase overlay on top of all scenes
     let overlayFilter = "";

@@ -208,7 +208,7 @@ export function StepRender({ project, updateProject, onNext, onPrev, onSave }: P
             <div className="flex gap-2">
               {[
                 { id: "none",  label: "없음 (컷)" },
-                { id: "fade",  label: "페이드" },
+                { id: "fade",  label: "크로스페이드" },
               ].map((t) => (
                 <button
                   key={t.id}
