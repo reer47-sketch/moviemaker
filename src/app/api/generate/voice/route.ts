@@ -41,6 +41,7 @@ export async function POST(req: NextRequest) {
     const {
       script, duration = "short",
       supertoneVoiceId = "", supertoneStyle = "neutral",
+      language = "ko",
     } = body;
 
     if (!script) {
@@ -70,7 +71,7 @@ export async function POST(req: NextRequest) {
           headers: { "x-sup-api-key": apiKey, "Content-Type": "application/json" },
           body: JSON.stringify({
             text: chunks[i],
-            language: "ko",
+            language: language === "en" ? "en" : "ko",
             model: "sona_speech_2",
             style: supertoneStyle,
             output_format: "mp3",

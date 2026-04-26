@@ -125,6 +125,7 @@ export function StepVoice({ project, updateProject, onNext, onPrev, onSave }: Pr
           duration: project.duration ?? "short",
           supertoneVoiceId: voiceId,
           supertoneStyle: style,
+          language: project.language ?? "ko",
         }),
       });
       const data = await res.json();
