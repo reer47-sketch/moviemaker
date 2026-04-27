@@ -212,13 +212,14 @@ export async function POST(req: NextRequest) {
     // True crossfade via blend filter (works in FFmpeg 4.0, no xfade needed)
     // Extracts tail/head of adjacent scenes, fades each in RGB space, blends with add mode
     // A*(1-t/T) + B*(t/T) — no clipping, correct color crossfade
+    // Shorts overlay is applied as a separate FFMPEG_DT pass (Step 2), not in filter_complex
     let transitionFilter: string;
     if (n === 1) {
-      transitionFilter = `[v0]setpts=PTS-STARTPTS[${baseLabel}]`;
+      transitionFilter = `[v0]setpts=PTS-STARTPTS[vout]`;
     } else if (transition === "fade") {
-      transitionFilter = buildBlendCrossfade(n, adjustedSec, XFADE_DURATION, baseLabel);
+      transitionFilter = buildBlendCrossfade(n, adjustedSec, XFADE_DURATION, "vout");
     } else {
-      transitionFilter = `${concatInputs}concat=n=${n}:v=1:a=0[${baseLabel}]`;
+      transitionFilter = `${concatInputs}concat=n=${n}:v=1:a=0[vout]`;
     }
 
     const filterComplex = [...filterParts, transitionFilter].join(";");
