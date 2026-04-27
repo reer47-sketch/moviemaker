@@ -65,7 +65,7 @@ export function StepRender({ project, updateProject, onNext, onPrev, onSave }: P
   const [keyFontSize, setKeyFontSize] = useState(() => lsGet("mm_render_keyFontSize", 58));
   const [keyFontColor, setKeyFontColor] = useState(() => lsGet("mm_render_keyFontColor", "white"));
   const [keyFontName, setKeyFontName] = useState(() => lsGet("mm_render_keyFontName", "NanumGothic-ExtraBold"));
-  const [keyTextPosition, setKeyTextPosition] = useState(() => lsGet("mm_render_keyTextPosition", isShorts ? 8 : 42));
+  const [keyTextPosition, setKeyTextPosition] = useState(() => lsGet("mm_render_keyTextPosition", isShorts ? 15 : 42));
 
   const startRender = async () => {
     setLoading(true);
