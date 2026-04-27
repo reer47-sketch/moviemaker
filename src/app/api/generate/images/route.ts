@@ -32,9 +32,10 @@ Requirements:
     ? `VERTICAL PORTRAIT FORMAT (9:16 tall). ${basePrompt}\n- Tall vertical composition filling the full portrait frame`
     : `${basePrompt}\n- 16:9 widescreen horizontal composition`;
 
-  // Pass size to both xAI and DALL-E (xAI uses OpenAI-compatible API)
+  // xAI does NOT support size parameter — portrait is prompt-only for xAI
+  // DALL-E 3 supports 1024x1792 for portrait
   const generateParams = useXai
-    ? { model: IMAGE_MODEL, prompt, n: 1, size: size as "1024x1792" | "1792x1024" }
+    ? { model: IMAGE_MODEL, prompt, n: 1 }
     : { model: IMAGE_MODEL, prompt, n: 1, size: size as "1024x1792" | "1792x1024", quality: "standard" as const };
   const response = await imageClient.images.generate(generateParams);
 
