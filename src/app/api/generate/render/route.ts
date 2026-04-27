@@ -11,6 +11,41 @@ const execAsync = promisify(exec);
 
 export const maxDuration = 300;
 
+/**
+ * Split text into at most 2 lines that fit within the given pixel width.
+ * Returns [line1, line2?]. Reduces fontSize until both lines fit.
+ */
+function fitTextLines(
+  text: string, W: number, fontSize: number, minFontSize = 24
+): { lines: string[]; fontSize: number } {
+  let fs = fontSize;
+  while (fs >= minFontSize) {
+    const charPx = fs * 0.65; // approximate width per char (bold Latin/Korean)
+    const maxChars = Math.floor((W * 0.88) / charPx);
+    if (text.length <= maxChars) return { lines: [text], fontSize: fs };
+    if (text.length <= maxChars * 2) {
+      const mid = Math.ceil(text.length / 2);
+      let split = mid;
+      for (let d = 1; d <= 10; d++) {
+        if (text[mid - d] === " ") { split = mid - d; break; }
+        if (text[mid + d] === " ") { split = mid + d; break; }
+      }
+      return {
+        lines: [text.slice(0, split).trim(), text.slice(split).trim()],
+        fontSize: fs,
+      };
+    }
+    fs -= 4;
+  }
+  // Still too long: hard-truncate to 2 lines
+  const charPx = minFontSize * 0.65;
+  const maxChars = Math.floor((W * 0.88) / charPx);
+  return {
+    lines: [text.slice(0, maxChars).trim(), text.slice(maxChars, maxChars * 2).trim()],
+    fontSize: minFontSize,
+  };
+}
+
 function escapeDrawtext(t: string): string {
   return t
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -233,20 +268,23 @@ export async function POST(req: NextRequest) {
     console.log("[render] FFmpeg render — scenes:", n, "kenBurns:", kenBurns, "transition:", transition);
     await execAsync(mainCmd, { timeout: 300000, maxBuffer: 50 * 1024 * 1024 });
 
-    // Step 2: Shorts keyPhrase overlay via FFMPEG_DT (has drawtext, no xfade needed here)
+    // Step 2: Shorts keyPhrase overlay via FFMPEG_DT
     let mainVideoFile = rawVideoFile;
     if (isShorts && keyPhrase?.trim()) {
       const overlayFile = path.join(tmpDir, `overlay-${ts}.mp4`);
-      const titleText = keyPhrase.trim().substring(0, 18) + (keyPhrase.trim().length > 18 ? ".." : "");
-      const safeTitle = escapeDrawtext(titleText);
+      const { lines, fontSize: fitFs } = fitTextLines(keyPhrase.trim(), W, keyFontSize);
       const shortsFont = path.join(process.cwd(), "public", "fonts", `${keyFontName}.ttf`);
       let fontPart = "";
       try { await fs.access(shortsFont); fontPart = `:fontfile='${shortsFont.replace(/\\/g, "/")}'`; } catch {}
       const centerY = Math.floor(H * keyTextPosition / 100);
-      const boxY = Math.max(0, centerY - 65);
-      const vfOverlay =
-        `drawbox=x=0:y=${boxY}:w=${W}:h=130:color=black@0.55:t=fill` +
-        `,drawtext=text='${safeTitle}'${fontPart}:fontsize=${keyFontSize}:fontcolor=${keyFontColor}:borderw=2:bordercolor=${keyFontColor}:x=(w-tw)/2:y=${centerY}-(th/2):shadowx=3:shadowy=3:shadowcolor=black@0.9`;
+      const lineH = Math.round(fitFs * 1.35);
+      const totalH = lines.length * lineH + 20;
+      const boxY = Math.max(0, centerY - Math.floor(totalH / 2) - 10);
+      const dtFilters = lines.map((line, li) => {
+        const lineY = centerY - Math.floor((lines.length * lineH) / 2) + li * lineH;
+        return `drawtext=text='${escapeDrawtext(line)}'${fontPart}:fontsize=${fitFs}:fontcolor=${keyFontColor}:borderw=2:bordercolor=${keyFontColor}:x=(w-tw)/2:y=${lineY}:shadowx=3:shadowy=3:shadowcolor=black@0.9`;
+      });
+      const vfOverlay = `drawbox=x=0:y=${boxY}:w=${W}:h=${totalH}:color=black@0.55:t=fill,${dtFilters.join(",")}`;
       const overlayCmd =
         `${FFMPEG_DT} -i "${rawVideoFile.replace(/\\/g, "/")}" -vf "${vfOverlay}" ` +
         `-c:v libx264 -c:a copy -pix_fmt yuv420p -movflags +faststart "${overlayFile.replace(/\\/g, "/")}" -y`;
@@ -399,7 +437,6 @@ async function buildHighlightIntro({ mainVideoFile, audioDuration, keyPhrase, in
   const startSec = Math.max(0, Math.min(audioDuration * 0.25, audioDuration - INTRO_DURATION - 1));
   const mainFwd = mainVideoFile.replace(/\\/g, "/");
   const centerY = Math.floor(H * keyTextPosition / 100);
-  const boxY = Math.max(0, centerY - 65);
   const nFrames = Math.ceil(INTRO_DURATION * 25);
 
   // Optional zoom-in on extracted clip
@@ -407,19 +444,29 @@ async function buildHighlightIntro({ mainVideoFile, audioDuration, keyPhrase, in
     ? `scale=${W * 2}:${H * 2}:force_original_aspect_ratio=increase,crop=${W * 2}:${H * 2},fps=25,zoompan=z='min(zoom+0.001,1.5)':d=${nFrames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${W}x${H},setsar=1`
     : null;
 
+  // Fit text into max 2 lines so it never overflows the frame width
+  const { lines: introLines, fontSize: introFs } = fitTextLines(keyPhrase, W, keyFontSize);
+  const introLineH = Math.round(introFs * 1.35);
+  const introBoxH = introLines.length * introLineH + 20;
+  const introBoxY = Math.max(0, centerY - Math.floor(introBoxH / 2) - 10);
+  const introTextFilters = introLines.map((line, li) => {
+    const lineY = centerY - Math.floor((introLines.length * introLineH) / 2) + li * introLineH;
+    return `drawtext=text='${escapeDrawtext(line)}'${fontFilePart}:fontsize=${introFs}:fontcolor=${keyFontColor}:borderw=2:bordercolor=${keyFontColor}:x=(w-tw)/2:y=${lineY}:shadowx=3:shadowy=3:shadowcolor=black@0.9`;
+  });
+
   const vf = isVertical ? [
     zoomFilter ?? `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1`,
     `eq=contrast=1.15:saturation=0.65:brightness=-0.04`,
-    `drawbox=x=0:y=${boxY}:w=${W}:h=130:color=black@0.65:t=fill`,
-    `drawtext=text='${safeText}'${fontFilePart}:fontsize=${keyFontSize}:fontcolor=${keyFontColor}:borderw=2:bordercolor=${keyFontColor}:x=(w-tw)/2:y=${centerY}-(th/2):shadowx=3:shadowy=3:shadowcolor=black@0.9`,
+    `drawbox=x=0:y=${introBoxY}:w=${W}:h=${introBoxH}:color=black@0.65:t=fill`,
+    ...introTextFilters,
     `fade=t=in:st=0:d=0.7`,
     `fade=t=out:st=${INTRO_DURATION - 0.7}:d=0.7`,
   ].join(",") : [
     zoomFilter ?? `scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,setsar=1`,
     `eq=contrast=1.15:saturation=0.65:brightness=-0.04`,
     `crop=1280:544:0:88,pad=1280:720:0:88:color=black`,
-    `drawbox=x=0:y=${Math.max(88, centerY - 60)}:w=1280:h=120:color=black@0.65:t=fill`,
-    `drawtext=text='${safeText}'${fontFilePart}:fontsize=${keyFontSize}:fontcolor=${keyFontColor}:x=(w-tw)/2:y=${centerY}-(th/2):shadowx=4:shadowy=4:shadowcolor=black@0.95`,
+    `drawbox=x=0:y=${Math.max(88, introBoxY)}:w=1280:h=${introBoxH}:color=black@0.65:t=fill`,
+    ...introTextFilters,
     `fade=t=in:st=0:d=0.7`,
     `fade=t=out:st=${INTRO_DURATION - 0.7}:d=0.7`,
   ].join(",");
