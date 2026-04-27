@@ -210,14 +210,15 @@ export async function POST(req: NextRequest) {
     ).join(" ");
 
     // Per-scene filters: Ken Burns for static images, plain scale for videos
-    // Shorts: always letterbox (no Ken Burns — zoompan on padded frame zooms into black bars)
-    // Non-Shorts: fill mode + Ken Burns when enabled
+    // Fill mode for all static images (increase+crop): portrait fills portrait, landscape fills landscape
+    // Ken Burns disabled for Shorts (zoompan on padded frame = black bars issue)
     const filterParts = mediaFiles.map(({ isVideo }, i) => {
       if (!isVideo && kenBurns && !isShorts) {
         const kb = kenBurnsFilter(i, nFrames, W, H);
         return `[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},fps=25,${kb},setsar=1,setpts=PTS-STARTPTS[v${i}]`;
       }
-      return `[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=25,setpts=PTS-STARTPTS[v${i}]`;
+      // Shorts or no Ken Burns: fill mode (crop center), no zoompan
+      return `[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1,fps=25,setpts=PTS-STARTPTS[v${i}]`;
     });
 
     const concatInputs = mediaFiles.map((_, i) => `[v${i}]`).join("");
