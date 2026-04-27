@@ -42,26 +42,8 @@ Requirements:
   const imageUrl = response.data?.[0]?.url;
   if (!imageUrl) throw new Error("No image URL returned from image API");
 
-  // Download image
   const imgRes = await fetch(imageUrl);
-  let imgBuffer: ArrayBuffer | Buffer = await imgRes.arrayBuffer();
-
-  // xAI always returns landscape — crop to 9:16 portrait for Shorts
-  if (isShorts && useXai) {
-    const sharp = (await import("sharp")).default;
-    const meta = await sharp(Buffer.from(imgBuffer)).metadata();
-    const origW = meta.width ?? 1024;
-    const origH = meta.height ?? 1024;
-    // Center-crop to 9:16 from the landscape image
-    const cropW = Math.floor(origH * 9 / 16);
-    const cropH = origH;
-    const left  = Math.floor((origW - cropW) / 2);
-    imgBuffer = await sharp(Buffer.from(imgBuffer))
-      .extract({ left, top: 0, width: cropW, height: cropH })
-      .resize(720, 1280, { fit: "cover" })
-      .png()
-      .toBuffer();
-  }
+  const imgBuffer = await imgRes.arrayBuffer();
 
   const fileName = `images/${Date.now()}-${Math.random().toString(36).slice(2)}.png`;
 
