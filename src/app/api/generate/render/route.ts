@@ -27,6 +27,45 @@ function escapeDrawtext(t: string): string {
 const INTRO_DURATION = 6;
 const XFADE_DURATION = 0.5;
 
+/**
+ * True crossfade using blend filter (available in FFmpeg 4.0, unlike xfade which needs 4.3+)
+ * Each scene is split into: base/tail (scene A) and head/rest (scene B).
+ * A's tail fades to black, B's head fades from black, both converted to RGB.
+ * blend=add combines them: A*(1-t/T) + B*(t/T) = proper crossfade, no black flash.
+ */
+function buildBlendCrossfade(n: number, D: number, T: number, outLabel: string): string {
+  const safeT = Math.min(T, D / 3);
+  const parts: string[] = [];
+  const segs: string[] = [];
+
+  for (let i = 0; i < n; i++) {
+    const isFirst = i === 0;
+    const isLast  = i === n - 1;
+    const splits  = isFirst || isLast ? 2 : 3;
+    const sOut    = Array.from({ length: splits }, (_, j) => `[_s${i}${j}]`).join("");
+    parts.push(`[v${i}]split=${splits}${sOut}`);
+
+    if (isFirst) {
+      parts.push(`[_s${i}0]trim=0:${(D - safeT).toFixed(3)},setpts=PTS-STARTPTS[base${i}]`);
+      parts.push(`[_s${i}1]trim=${(D - safeT).toFixed(3)}:${D.toFixed(3)},setpts=PTS-STARTPTS,format=rgb24,fade=t=out:st=0:d=${safeT}[tail${i}]`);
+      segs.push(`[base${i}]`);
+    } else if (isLast) {
+      parts.push(`[_s${i}0]trim=0:${safeT.toFixed(3)},setpts=PTS-STARTPTS,format=rgb24,fade=t=in:st=0:d=${safeT}[head${i}]`);
+      parts.push(`[_s${i}1]trim=${safeT.toFixed(3)}:${D.toFixed(3)},setpts=PTS-STARTPTS[rest${i}]`);
+      parts.push(`[tail${i - 1}][head${i}]blend=all_mode=add,format=yuv420p[cf${i - 1}]`);
+      segs.push(`[cf${i - 1}]`, `[rest${i}]`);
+    } else {
+      parts.push(`[_s${i}0]trim=0:${safeT.toFixed(3)},setpts=PTS-STARTPTS,format=rgb24,fade=t=in:st=0:d=${safeT}[head${i}]`);
+      parts.push(`[_s${i}1]trim=${safeT.toFixed(3)}:${(D - safeT).toFixed(3)},setpts=PTS-STARTPTS[mid${i}]`);
+      parts.push(`[_s${i}2]trim=${(D - safeT).toFixed(3)}:${D.toFixed(3)},setpts=PTS-STARTPTS,format=rgb24,fade=t=out:st=0:d=${safeT}[tail${i}]`);
+      parts.push(`[tail${i - 1}][head${i}]blend=all_mode=add,format=yuv420p[cf${i - 1}]`);
+      segs.push(`[cf${i - 1}]`, `[mid${i}]`);
+    }
+  }
+  parts.push(`${segs.join("")}concat=n=${segs.length}:v=1:a=0[${outLabel}]`);
+  return parts.join(";");
+}
+
 /** Get media duration by parsing ffmpeg -i stderr (replaces ffprobe) */
 async function getMediaDuration(ffmpegPath: string, filePath: string): Promise<number> {
   let stderr = "";
@@ -117,7 +156,10 @@ export async function POST(req: NextRequest) {
     const n = scenes.length || 1;
     const secondsPerScene = audioDuration / Math.max(n, 1);
 
-    const adjustedSec = secondsPerScene; // no overlap needed (fade-in/out, not xfade)
+    // Extend each segment so total video duration matches audio after crossfade trim
+    const adjustedSec = transition === "fade" && n > 1
+      ? secondsPerScene + (n - 1) * XFADE_DURATION / n
+      : secondsPerScene;
     const dur = adjustedSec.toFixed(3);
     const nFrames = Math.ceil(adjustedSec * 25);
 
@@ -167,30 +209,14 @@ export async function POST(req: NextRequest) {
 
     const concatInputs = mediaFiles.map((_, i) => `[v${i}]`).join("");
 
-    // Crossfade via fade-in/out on each clip + concat (xfade not available in @ffmpeg-installer)
-    // Each clip fades out at the end (except last) and fades in at the start (except first)
-    // FADE_DUR kept short (0.25s) so the black dip is barely visible
-    const FADE_DUR = 0.25;
+    // True crossfade via blend filter (works in FFmpeg 4.0, no xfade needed)
+    // Extracts tail/head of adjacent scenes, fades each in RGB space, blends with add mode
+    // A*(1-t/T) + B*(t/T) — no clipping, correct color crossfade
     let transitionFilter: string;
     if (n === 1) {
       transitionFilter = `[v0]setpts=PTS-STARTPTS[vout]`;
     } else if (transition === "fade") {
-      // Re-apply fade filters to the already-built [v0]..[vN-1] streams
-      const fadedParts = mediaFiles.map((_, i) => {
-        const fadeIn  = i > 0     ? `,fade=t=in:st=0:d=${FADE_DUR}` : "";
-        const fadeOut = i < n - 1 ? `,fade=t=out:st=${(adjustedSec - FADE_DUR).toFixed(3)}:d=${FADE_DUR}` : "";
-        if (!fadeIn && !fadeOut) return null;
-        return `[v${i}]${fadeIn || ""}${fadeOut || ""}[f${i}]`.replace(/^\[v\d+\],/, `[v${i}]`);
-      });
-      const fadedParts2 = mediaFiles.map((_, i) => {
-        const fadeIn  = i > 0     ? `fade=t=in:st=0:d=${FADE_DUR}` : "";
-        const fadeOut = i < n - 1 ? `fade=t=out:st=${(adjustedSec - FADE_DUR).toFixed(3)}:d=${FADE_DUR}` : "";
-        const filter  = [fadeIn, fadeOut].filter(Boolean).join(",");
-        if (!filter) return `[v${i}]copy[f${i}]`;
-        return `[v${i}]${filter}[f${i}]`;
-      });
-      const fadeInputs = mediaFiles.map((_, i) => `[f${i}]`).join("");
-      transitionFilter = fadedParts2.join(";") + `;${fadeInputs}concat=n=${n}:v=1:a=0[vout]`;
+      transitionFilter = buildBlendCrossfade(n, adjustedSec, XFADE_DURATION, "vout");
     } else {
       transitionFilter = `${concatInputs}concat=n=${n}:v=1:a=0[vout]`;
     }
