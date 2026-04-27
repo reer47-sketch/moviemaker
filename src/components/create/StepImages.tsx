@@ -92,7 +92,7 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
       const res = await fetch("/api/generate/images", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ scenes: targetScenes }),
+        body: JSON.stringify({ scenes: targetScenes, duration: project.duration }),
       });
       const data = await res.json();
       if (!res.ok || !data.imageUrls) {
@@ -142,7 +142,7 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
       const res = await fetch("/api/generate/images", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ scenes: [project.scenes?.[idx]], single: true }),
+        body: JSON.stringify({ scenes: [project.scenes?.[idx]], single: true, duration: project.duration }),
       });
       const data = await res.json();
       const updated = [...mediaItems];

@@ -11,15 +11,18 @@ const imageClient = useXai
   ? new OpenAI({ apiKey: process.env.XAI_API_KEY, baseURL: "https://api.x.ai/v1" })
   : new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const IMAGE_MODEL = useXai ? "grok-imagine-image" : "dall-e-3";
-const IMAGE_SIZE = "1792x1024";
 
 type Scene = { title: string; content: string; imagePrompt?: string };
 
-async function generateAndUploadImage(scene: Scene): Promise<string> {
+async function generateAndUploadImage(scene: Scene, isShorts: boolean): Promise<string> {
   const supabase = createServiceClient();
 
+  const aspectHint = isShorts
+    ? "9:16 vertical portrait composition, tall frame, mobile-friendly"
+    : "16:9 widescreen composition";
+
   const prompt = scene.imagePrompt?.trim()
-    ? scene.imagePrompt
+    ? (isShorts ? `${scene.imagePrompt} (vertical 9:16 portrait orientation)` : scene.imagePrompt)
     : `A real photograph for a YouTube video scene.
 Scene: "${scene.title}" — ${scene.content}
 
@@ -28,11 +31,12 @@ Requirements:
 - Real people, real places, real objects (no CGI, no illustrations, no artwork)
 - Natural lighting, documentary or editorial photography style
 - No text, no captions, no watermarks
-- 16:9 widescreen composition`;
+- ${aspectHint}`;
 
+  const size = isShorts ? "1024x1792" : "1792x1024";
   const generateParams = useXai
     ? { model: IMAGE_MODEL, prompt, n: 1 }
-    : { model: IMAGE_MODEL, prompt, n: 1, size: IMAGE_SIZE as "1792x1024", quality: "standard" as const };
+    : { model: IMAGE_MODEL, prompt, n: 1, size: size as "1024x1792" | "1792x1024", quality: "standard" as const };
   const response = await imageClient.images.generate(generateParams);
 
   const imageUrl = response.data?.[0]?.url;
@@ -55,7 +59,8 @@ Requirements:
 
 export async function POST(req: NextRequest) {
   try {
-    const { scenes } = await req.json();
+    const { scenes, duration } = await req.json();
+    const isShorts = duration === "short";
 
     if (!scenes || scenes.length === 0) {
       return NextResponse.json({ error: "장면 정보가 필요합니다" }, { status: 400 });
@@ -65,13 +70,12 @@ export async function POST(req: NextRequest) {
     const creditResult = await deductCredits(req, cost);
     if (creditResult instanceof NextResponse) return creditResult;
 
-    // Generate images in parallel (max 3 at a time to avoid rate limits)
     const imageUrls: string[] = [];
     const batchSize = 3;
 
     for (let i = 0; i < scenes.length; i += batchSize) {
       const batch = scenes.slice(i, i + batchSize);
-      const batchResults = await Promise.all(batch.map(generateAndUploadImage));
+      const batchResults = await Promise.all(batch.map((s: Scene) => generateAndUploadImage(s, isShorts)));
       imageUrls.push(...batchResults);
     }
 
