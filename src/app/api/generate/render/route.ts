@@ -63,41 +63,20 @@ const INTRO_DURATION = 6;
 const XFADE_DURATION = 0.5;
 
 /**
- * True crossfade using blend filter (available in FFmpeg 4.0, unlike xfade which needs 4.3+)
- * Each scene is split into: base/tail (scene A) and head/rest (scene B).
- * A's tail fades to black, B's head fades from black, both converted to RGB.
- * blend=add combines them: A*(1-t/T) + B*(t/T) = proper crossfade, no black flash.
+ * Fade transition: each clip fades out at end / fades in at start, then concat.
+ * Avoids blend filter color artifacts (pink flash from rgb24↔yuv420p conversion).
+ * 0.3s fade duration — barely noticeable, clean black dip.
  */
-function buildBlendCrossfade(n: number, D: number, T: number, outLabel: string): string {
+function buildFadeTransition(n: number, D: number, T: number, outLabel: string): string {
   const safeT = Math.min(T, D / 3);
-  const parts: string[] = [];
-  const segs: string[] = [];
-
-  for (let i = 0; i < n; i++) {
-    const isFirst = i === 0;
-    const isLast  = i === n - 1;
-    const splits  = isFirst || isLast ? 2 : 3;
-    const sOut    = Array.from({ length: splits }, (_, j) => `[_s${i}${j}]`).join("");
-    parts.push(`[v${i}]split=${splits}${sOut}`);
-
-    if (isFirst) {
-      parts.push(`[_s${i}0]trim=0:${(D - safeT).toFixed(3)},setpts=PTS-STARTPTS[base${i}]`);
-      parts.push(`[_s${i}1]trim=${(D - safeT).toFixed(3)}:${D.toFixed(3)},setpts=PTS-STARTPTS,format=rgb24,fade=t=out:st=0:d=${safeT}[tail${i}]`);
-      segs.push(`[base${i}]`);
-    } else if (isLast) {
-      parts.push(`[_s${i}0]trim=0:${safeT.toFixed(3)},setpts=PTS-STARTPTS,format=rgb24,fade=t=in:st=0:d=${safeT}[head${i}]`);
-      parts.push(`[_s${i}1]trim=${safeT.toFixed(3)}:${D.toFixed(3)},setpts=PTS-STARTPTS[rest${i}]`);
-      parts.push(`[tail${i - 1}][head${i}]blend=c0_mode=addition:c1_mode=addition:c2_mode=addition,format=yuv420p[cf${i - 1}]`);
-      segs.push(`[cf${i - 1}]`, `[rest${i}]`);
-    } else {
-      parts.push(`[_s${i}0]trim=0:${safeT.toFixed(3)},setpts=PTS-STARTPTS,format=rgb24,fade=t=in:st=0:d=${safeT}[head${i}]`);
-      parts.push(`[_s${i}1]trim=${safeT.toFixed(3)}:${(D - safeT).toFixed(3)},setpts=PTS-STARTPTS[mid${i}]`);
-      parts.push(`[_s${i}2]trim=${(D - safeT).toFixed(3)}:${D.toFixed(3)},setpts=PTS-STARTPTS,format=rgb24,fade=t=out:st=0:d=${safeT}[tail${i}]`);
-      parts.push(`[tail${i - 1}][head${i}]blend=c0_mode=addition:c1_mode=addition:c2_mode=addition,format=yuv420p[cf${i - 1}]`);
-      segs.push(`[cf${i - 1}]`, `[mid${i}]`);
-    }
-  }
-  parts.push(`${segs.join("")}concat=n=${segs.length}:v=1:a=0[${outLabel}]`);
+  const parts = Array.from({ length: n }, (_, i) => {
+    const fadeIn  = i > 0     ? `,fade=t=in:st=0:d=${safeT}`                            : "";
+    const fadeOut = i < n - 1 ? `,fade=t=out:st=${(D - safeT).toFixed(3)}:d=${safeT}`  : "";
+    const filters = fadeIn || fadeOut ? `${fadeIn || ""}${fadeOut || ""}`.replace(/^,/, "") : "copy";
+    return `[v${i}]${filters}[f${i}]`;
+  });
+  const concatIn = Array.from({ length: n }, (_, i) => `[f${i}]`).join("");
+  parts.push(`${concatIn}concat=n=${n}:v=1:a=0[${outLabel}]`);
   return parts.join(";");
 }
 
@@ -125,15 +104,16 @@ async function getVideoWidth(ffmpegPath: string, filePath: string): Promise<numb
 /** Ken Burns zoom/pan filter for a static image — pattern cycles across scenes */
 function kenBurnsFilter(sceneIdx: number, nFrames: number, W: number, H: number): string {
   // Input is scaled to 2× target before zoompan, so iw=2W, ih=2H
+  // round() on x/y prevents sub-pixel jitter (wobbling effect)
   switch (sceneIdx % 4) {
     case 0: // slow zoom-in from center
-      return `zoompan=z='min(zoom+0.0008,1.5)':d=${nFrames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${W}x${H}`;
+      return `zoompan=z='min(zoom+0.0008,1.5)':d=${nFrames}:x='round(iw/2-(iw/zoom/2))':y='round(ih/2-(ih/zoom/2))':s=${W}x${H}`;
     case 1: // slow zoom-out from center
-      return `zoompan=z='if(eq(on,1),1.5,max(zoom-0.0008,1.0))':d=${nFrames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${W}x${H}`;
+      return `zoompan=z='if(eq(on,1),1.5,max(zoom-0.0008,1.0))':d=${nFrames}:x='round(iw/2-(iw/zoom/2))':y='round(ih/2-(ih/zoom/2))':s=${W}x${H}`;
     case 2: // pan left → right
-      return `zoompan=z=1.3:d=${nFrames}:x='min(on*(iw*(1-1/1.3))/${nFrames},iw*(1-1/1.3))':y='ih/2-(ih/1.3/2)':s=${W}x${H}`;
+      return `zoompan=z=1.3:d=${nFrames}:x='round(min(on*(iw*(1-1/1.3))/${nFrames},iw*(1-1/1.3)))':y='round(ih/2-(ih/1.3/2))':s=${W}x${H}`;
     default: // pan right → left
-      return `zoompan=z=1.3:d=${nFrames}:x='max(iw*(1-1/1.3)*(1-on/${nFrames}),0)':y='ih/2-(ih/1.3/2)':s=${W}x${H}`;
+      return `zoompan=z=1.3:d=${nFrames}:x='round(max(iw*(1-1/1.3)*(1-on/${nFrames}),0))':y='round(ih/2-(ih/1.3/2))':s=${W}x${H}`;
   }
 }
 
@@ -191,10 +171,7 @@ export async function POST(req: NextRequest) {
     const n = scenes.length || 1;
     const secondsPerScene = audioDuration / Math.max(n, 1);
 
-    // Extend each segment so total video duration matches audio after crossfade trim
-    const adjustedSec = transition === "fade" && n > 1
-      ? secondsPerScene + (n - 1) * XFADE_DURATION / n
-      : secondsPerScene;
+    const adjustedSec = secondsPerScene;
     const dur = adjustedSec.toFixed(3);
     const nFrames = Math.ceil(adjustedSec * 25);
 
@@ -249,15 +226,11 @@ export async function POST(req: NextRequest) {
 
     const concatInputs = mediaFiles.map((_, i) => `[v${i}]`).join("");
 
-    // True crossfade via blend filter (works in FFmpeg 4.0, no xfade needed)
-    // Extracts tail/head of adjacent scenes, fades each in RGB space, blends with add mode
-    // A*(1-t/T) + B*(t/T) — no clipping, correct color crossfade
-    // Shorts overlay is applied as a separate FFMPEG_DT pass (Step 2), not in filter_complex
     let transitionFilter: string;
     if (n === 1) {
-      transitionFilter = `[v0]setpts=PTS-STARTPTS[vout]`;
+      transitionFilter = `[v0]copy[vout]`;
     } else if (transition === "fade") {
-      transitionFilter = buildBlendCrossfade(n, adjustedSec, XFADE_DURATION, "vout");
+      transitionFilter = buildFadeTransition(n, adjustedSec, 0.3, "vout");
     } else {
       transitionFilter = `${concatInputs}concat=n=${n}:v=1:a=0[vout]`;
     }

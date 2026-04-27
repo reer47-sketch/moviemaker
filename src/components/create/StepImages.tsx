@@ -46,6 +46,7 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scenes = project.scenes ?? [];
+  const isShorts = project.duration === "short";
 
   const syncUrls = (items: MediaItem[]) => {
     const urls = items.map((m) => m.url);
@@ -408,9 +409,9 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
                     </span>
                   )}
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-64 overflow-y-auto pr-1">
+                <div className={`grid gap-3 max-h-64 overflow-y-auto pr-1 ${isShorts ? "grid-cols-3 sm:grid-cols-4" : "grid-cols-2 sm:grid-cols-3"}`}>
                   {mediaItems.map((item, i) => (
-                    <div key={i} className="relative group aspect-video rounded-xl overflow-hidden bg-muted">
+                    <div key={i} className={`relative group rounded-xl overflow-hidden bg-muted ${isShorts ? "aspect-[9/16]" : "aspect-video"}`}>
                       {item.type === "video" ? (
                         <div className="w-full h-full flex flex-col items-center justify-center gap-1 bg-muted">
                           <Film className="w-6 h-6 text-muted-foreground" />
@@ -540,7 +541,7 @@ export function StepImages({ project, updateProject, onNext, onPrev, onSave }: P
                     })()}
 
                     {/* Assigned image */}
-                    <div className="w-20 h-14 rounded-lg overflow-hidden bg-muted shrink-0 border border-border/30">
+                    <div className={`rounded-lg overflow-hidden bg-muted shrink-0 border border-border/30 ${isShorts ? "w-10 h-[71px]" : "w-20 h-14"}`}>
                       {item ? (
                         item.type === "video" ? (
                           <div className="w-full h-full flex items-center justify-center">
