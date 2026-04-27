@@ -57,7 +57,9 @@ command substitution inside double-quoted strings, silently corrupting the scrip
 Use ONLY `@ffmpeg-installer/ffmpeg`. It has drawtext + zoompan. It lacks `xfade` — use
 fade-in/out per clip + concat as the crossfade substitute (0.25s, barely visible).
 - NEVER install `ffmpeg-static` — it breaks the Vercel deployment size limit.
-- Crossfade without xfade: add `fade=t=out:st=<end-T>:d=T` to each clip, `fade=t=in` to next, then concat.
+- Crossfade without xfade: use `blend` filter with `c0_mode=addition:c1_mode=addition:c2_mode=addition` (NOT `all_mode=add` — unsupported in this build).
+- `all_mode=add` causes "Undefined constant" error; correct syntax: `c0_mode=addition:c1_mode=addition:c2_mode=addition`.
+- Blend mode name is `addition` not `add` in FFmpeg 4.0 era builds.
 
 ## 5. Notion API with Korean text — always use Python/Node, never curl on Windows
 **Rule:** `curl` with inline Korean on Windows terminal (cp949) corrupts UTF-8 content in the
