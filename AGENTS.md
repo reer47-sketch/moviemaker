@@ -61,6 +61,26 @@ fade-in/out per clip + concat as the crossfade substitute (0.25s, barely visible
 - `all_mode=add` causes "Undefined constant" error; correct syntax: `c0_mode=addition:c1_mode=addition:c2_mode=addition`.
 - Blend mode name is `addition` not `add` in FFmpeg 4.0 era builds.
 
+## 7. xAI (Grok) image API — known limitations
+**Rule:** `grok-imagine-image` does NOT support the `size` parameter. Passing it causes an API error.
+- NEVER pass `size` to xAI image generation — only prompt-based aspect ratio hints work.
+- DALL-E 3 supports `size: "1024x1792"` (portrait 9:16) and `size: "1792x1024"` (landscape).
+- For Shorts portrait images with xAI: use strong prompt prefix "VERTICAL PORTRAIT FORMAT (9:16 tall)".
+- xAI also does NOT support: `quality`, `style` parameters (DALL-E only).
+- Pattern:
+  ```typescript
+  const generateParams = useXai
+    ? { model: IMAGE_MODEL, prompt, n: 1 }  // NO size/quality/style
+    : { model: IMAGE_MODEL, prompt, n: 1, size: "1024x1792", quality: "standard" };
+  ```
+
+## 8. Vercel 250MB bundle limit — root cause was characters/ folder
+**Rule:** Never commit large binary files (images, videos) to the repo root without adding them
+to `.vercelignore`. The `characters/` folder with 143 PNG files (190MB) caused the 250MB limit.
+- Always add large asset directories to `.vercelignore` immediately when creating them.
+- Current `.vercelignore`: `characters/`, `scripts/`
+- Removing packages (sharp, ffprobe etc.) is NOT the fix — check repo file sizes first.
+
 ## 5. Notion API with Korean text — always use Python/Node, never curl on Windows
 **Rule:** `curl` with inline Korean on Windows terminal (cp949) corrupts UTF-8 content in the
 Notion API payload. Always use a Python script with `json.dumps(..., ensure_ascii=False).encode('utf-8')`
