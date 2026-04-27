@@ -52,13 +52,13 @@ function buildBlendCrossfade(n: number, D: number, T: number, outLabel: string):
     } else if (isLast) {
       parts.push(`[_s${i}0]trim=0:${safeT.toFixed(3)},setpts=PTS-STARTPTS,format=rgb24,fade=t=in:st=0:d=${safeT}[head${i}]`);
       parts.push(`[_s${i}1]trim=${safeT.toFixed(3)}:${D.toFixed(3)},setpts=PTS-STARTPTS[rest${i}]`);
-      parts.push(`[tail${i - 1}][head${i}]blend=all_mode=add,format=yuv420p[cf${i - 1}]`);
+      parts.push(`[tail${i - 1}][head${i}]blend=c0_mode=addition:c1_mode=addition:c2_mode=addition,format=yuv420p[cf${i - 1}]`);
       segs.push(`[cf${i - 1}]`, `[rest${i}]`);
     } else {
       parts.push(`[_s${i}0]trim=0:${safeT.toFixed(3)},setpts=PTS-STARTPTS,format=rgb24,fade=t=in:st=0:d=${safeT}[head${i}]`);
       parts.push(`[_s${i}1]trim=${safeT.toFixed(3)}:${(D - safeT).toFixed(3)},setpts=PTS-STARTPTS[mid${i}]`);
       parts.push(`[_s${i}2]trim=${(D - safeT).toFixed(3)}:${D.toFixed(3)},setpts=PTS-STARTPTS,format=rgb24,fade=t=out:st=0:d=${safeT}[tail${i}]`);
-      parts.push(`[tail${i - 1}][head${i}]blend=all_mode=add,format=yuv420p[cf${i - 1}]`);
+      parts.push(`[tail${i - 1}][head${i}]blend=c0_mode=addition:c1_mode=addition:c2_mode=addition,format=yuv420p[cf${i - 1}]`);
       segs.push(`[cf${i - 1}]`, `[mid${i}]`);
     }
   }
