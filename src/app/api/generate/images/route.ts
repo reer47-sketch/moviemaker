@@ -17,25 +17,24 @@ type Scene = { title: string; content: string; imagePrompt?: string };
 async function generateAndUploadImage(scene: Scene, isShorts: boolean): Promise<string> {
   const supabase = createServiceClient();
 
-  const aspectHint = isShorts
-    ? "9:16 vertical portrait composition, tall frame, mobile-friendly"
-    : "16:9 widescreen composition";
+  const size = isShorts ? "1024x1792" : "1792x1024";
 
-  const prompt = scene.imagePrompt?.trim()
-    ? (isShorts ? `${scene.imagePrompt} (vertical 9:16 portrait orientation)` : scene.imagePrompt)
-    : `A real photograph for a YouTube video scene.
+  const basePrompt = scene.imagePrompt?.trim() || `A real photograph for a YouTube video scene.
 Scene: "${scene.title}" — ${scene.content}
 
 Requirements:
 - Photorealistic, looks like an actual photo taken by a photographer
 - Real people, real places, real objects (no CGI, no illustrations, no artwork)
 - Natural lighting, documentary or editorial photography style
-- No text, no captions, no watermarks
-- ${aspectHint}`;
+- No text, no captions, no watermarks`;
 
-  const size = isShorts ? "1024x1792" : "1792x1024";
+  const prompt = isShorts
+    ? `VERTICAL PORTRAIT FORMAT (9:16 tall). ${basePrompt}\n- Tall vertical composition filling the full portrait frame`
+    : `${basePrompt}\n- 16:9 widescreen horizontal composition`;
+
+  // Pass size to both xAI and DALL-E (xAI uses OpenAI-compatible API)
   const generateParams = useXai
-    ? { model: IMAGE_MODEL, prompt, n: 1 }
+    ? { model: IMAGE_MODEL, prompt, n: 1, size: size as "1024x1792" | "1792x1024" }
     : { model: IMAGE_MODEL, prompt, n: 1, size: size as "1024x1792" | "1792x1024", quality: "standard" as const };
   const response = await imageClient.images.generate(generateParams);
 
