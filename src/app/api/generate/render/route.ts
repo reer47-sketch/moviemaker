@@ -214,11 +214,11 @@ export async function POST(req: NextRequest) {
     // A*(1-t/T) + B*(t/T) — no clipping, correct color crossfade
     let transitionFilter: string;
     if (n === 1) {
-      transitionFilter = `[v0]setpts=PTS-STARTPTS[vout]`;
+      transitionFilter = `[v0]setpts=PTS-STARTPTS[${baseLabel}]`;
     } else if (transition === "fade") {
-      transitionFilter = buildBlendCrossfade(n, adjustedSec, XFADE_DURATION, "vout");
+      transitionFilter = buildBlendCrossfade(n, adjustedSec, XFADE_DURATION, baseLabel);
     } else {
-      transitionFilter = `${concatInputs}concat=n=${n}:v=1:a=0[vout]`;
+      transitionFilter = `${concatInputs}concat=n=${n}:v=1:a=0[${baseLabel}]`;
     }
 
     const filterComplex = [...filterParts, transitionFilter].join(";");
