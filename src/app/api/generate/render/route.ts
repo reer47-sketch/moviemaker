@@ -60,7 +60,6 @@ function escapeDrawtext(t: string): string {
 }
 
 const INTRO_DURATION = 6;
-const XFADE_DURATION = 0.5;
 
 /**
  * Fade transition: each clip fades out at end / fades in at start, then concat.
@@ -80,26 +79,6 @@ function buildFadeTransition(n: number, D: number, T: number, outLabel: string):
   return parts.join(";");
 }
 
-/** Get media duration by parsing ffmpeg -i stderr (replaces ffprobe) */
-async function getMediaDuration(ffmpegPath: string, filePath: string): Promise<number> {
-  let stderr = "";
-  try {
-    await execAsync(`"${ffmpegPath}" -i "${filePath.replace(/\\/g, "/")}"`, { timeout: 30000 });
-  } catch (e: any) { stderr = e.stderr ?? ""; }
-  const m = stderr.match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/);
-  if (m) return parseInt(m[1]) * 3600 + parseInt(m[2]) * 60 + parseFloat(m[3]);
-  return 30;
-}
-
-/** Get video width by parsing ffmpeg -i stderr */
-async function getVideoWidth(ffmpegPath: string, filePath: string): Promise<number> {
-  let stderr = "";
-  try {
-    await execAsync(`"${ffmpegPath}" -i "${filePath.replace(/\\/g, "/")}"`, { timeout: 30000 });
-  } catch (e: any) { stderr = e.stderr ?? ""; }
-  const m = stderr.match(/Video:.*?(\d{3,4})x(\d{3,4})/);
-  return m ? parseInt(m[1]) : 1280;
-}
 
 /** Ken Burns zoom/pan filter for a static image — pattern cycles across scenes */
 function kenBurnsFilter(sceneIdx: number, nFrames: number, W: number, H: number): string {
@@ -257,7 +236,7 @@ export async function POST(req: NextRequest) {
       const boxY = Math.max(0, centerY - Math.floor(totalH / 2) - 10);
       const dtFilters = lines.map((line, li) => {
         const lineY = centerY - Math.floor((lines.length * lineH) / 2) + li * lineH;
-        return `drawtext=text='${escapeDrawtext(line)}'${fontPart}:fontsize=${fitFs}:fontcolor=${keyFontColor}:borderw=2:bordercolor=${keyFontColor}:x=(w-tw)/2:y=${lineY}:shadowx=3:shadowy=3:shadowcolor=black@0.9`;
+        return `drawtext=text='${escapeDrawtext(line)}'${fontPart}:fontsize=${fitFs}:fontcolor=${keyFontColor}:borderw=2:bordercolor=${keyFontColor}:x=(${W}-tw)/2:y=${lineY}:shadowx=3:shadowy=3:shadowcolor=black@0.9`;
       });
       const vfOverlay = `drawbox=x=0:y=${boxY}:w=${W}:h=${totalH}:color=black@0.55:t=fill,${dtFilters.join(",")}`;
       const overlayCmd =
@@ -344,7 +323,6 @@ async function buildHighlightIntro({ mainVideoFile, audioDuration, keyPhrase, in
   introStyle: string;
 }): Promise<void> {
   const isVertical = H > W;
-  const safeText = escapeDrawtext(keyPhrase);
   const introFwd = introFile.replace(/\\/g, "/");
 
   const fontAbsPath = path.join(process.cwd(), "public", "fonts", `${keyFontName}.ttf`);
