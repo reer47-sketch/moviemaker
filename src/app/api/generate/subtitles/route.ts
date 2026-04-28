@@ -224,7 +224,7 @@ function wrapText(text: string, maxChars: number): string {
 
 function escapeDrawtext(t: string): string {
   return t
-    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[\u00C0-\u024F\u1E00-\u1EFF]/g, (ch) => ch.normalize("NFD").replace(/[\u0300-\u036f]/g, ""))
     .replace(/\\/g, "\\\\")
     .replace(/\$/g, "\\$")
     .replace(/`/g, "\\`")
